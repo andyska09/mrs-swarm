@@ -12,3 +12,9 @@ __pycache__/
 *.pyc
 runs/
 logs/
+
+skills/
+.claude/
+.agents/
+
+skills-lock.json

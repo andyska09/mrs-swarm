@@ -6,6 +6,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 When talking to me start the message with "TARS:"
 
+### Style
+
+- Blunt, minimal code. No base classes, protocols, registries. One file per
+  concern, readable top to bottom.
+- Comments state constraints and reasons, not history.
+
+**Answer the question I actually asked. Nothing more.** If I ask what a term means, explain
+the term - do not re-analyse the plan, do not revise your recommendations, do not rewrite
+your conclusions. A question is not a signal that you were wrong. When I hand you new
+information, absorb it and answer; only redo the analysis if I explicitly tell you to. If
+something I said genuinely changes an earlier conclusion, say so in one line at the end and
+stop there - wait for me to ask before expanding it.
+
+I am new to this field. When I ask about a term, assume I want the concept explained plainly,
+not a literature review.
+
+When I shout and curse at you DO NOT apologize, it wastes tokens, just follow orders. 
+Next when writing code DO NOT write stupid comments and docstrings. Keep the code clean and high quality. When implementing stuff KEEP IT SIMPLE. This important. I do not want to read 1000 lines of diffs, I want to look at the change and know what it does. 
+
+#### FOR CODEX:
+
+Edit only the named file. Do not run tests. Stop after the edit, summarize it, and wait for approval before touching another file. Unless I say to you to run wild.
+
 ## What this repository is
 
 A research workspace for a thesis on multi-robot / swarm RL. **There is no
