@@ -1,0 +1,14 @@
+/research/papers/*
+!/research/papers/bibliography_index.md
+
+/research/code_sources/quad-swarm-rl/
+
+CLAUDE.local.md
+goals.local.md
+
+.DS_Store
+
+__pycache__/
+*.pyc
+runs/
+logs/
