@@ -1,0 +1,11 @@
+# Versions that are verified working locally (agiflight conda env, CPU) as of 2026-08-17.
+# On RCI the container supplies jax/jaxlib(CUDA)/flax/optax; install ONLY the last two
+# with `pip install --user --no-deps` (see cluster/README.md).
+jax==0.10.1
+jaxlib==0.10.1
+flax==0.12.7
+optax==0.2.8
+distrax==0.1.8
+gymnax==0.0.9
+numpy
+matplotlib
