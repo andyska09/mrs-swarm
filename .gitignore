@@ -18,3 +18,5 @@ skills/
 .agents/
 
 skills-lock.json
+__pycache__/
+*.pyc
