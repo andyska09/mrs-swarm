@@ -31,10 +31,9 @@ Edit only the named file. Do not run tests. Stop after the edit, summarize it, a
 
 ## What this repository is
 
-A research workspace for a thesis on multi-robot / swarm RL. **There is no
-project code of our own yet** — the repo currently holds only `research/`:
-notes, papers, and two vendored reference codebases we are learning from and
-will build on. The git repo has no commits yet.
+A research workspace for a thesis on multi-robot / swarm RL. Our own code lives
+in `swarm/`; `research/` holds notes, papers, and two vendored reference
+codebases we learn from but do not edit.
 
 Project goals ([research/notes/goals.md](research/notes/goals.md), written in Czech):
 
@@ -48,6 +47,70 @@ Project goals ([research/notes/goals.md](research/notes/goals.md), written in Cz
    [quad-swarm-rl](https://github.com/Zhehui-Huang/quad-swarm-rl).
 4. Push the paper further: add attention, a 3D environment, and/or more
    sophisticated dynamics.
+
+## swarm/ — our code
+
+Plan: [research/notes/plan.md](research/notes/plan.md). Replicating Li 2023 is
+how the platform gets validated; the platform is the end.
+
+**Python environments. There are two, they are not compatible, never mix them.**
+
+| env | for | how |
+|---|---|---|
+| `mrs-swarm` | `swarm/` and `research/code_sources/PPO_example` | `conda run -n mrs-swarm --no-capture-output python ...` |
+| — | `research/code_sources/quad-swarm-rl` | separate PyTorch stack, not created yet |
+
+`mrs-swarm` is conda + python 3.11, CPU: jax/jaxlib 0.10.1, flax 0.12.7, optax
+0.2.8, distrax 0.1.8, gymnax 0.0.9, matplotlib, imageio ([requirements.txt](requirements.txt),
+pins copied from PPO_example). Use `conda run`, not `source activate`. Run
+everything from the repo root as `-m swarm.…`.
+
+```bash
+conda run -n mrs-swarm --no-capture-output python -m swarm.tests.test_smoke        # THE GATE, ~30 s
+conda run -n mrs-swarm --no-capture-output python -m swarm.tests.test_smoke --env  # env gates only, ~8 s
+conda run -n mrs-swarm --no-capture-output python -m swarm.run.train --preset pendulum --exp exp_skeleton --seed 0
+conda run -n mrs-swarm --no-capture-output python -m swarm.run.render --preset torus --seed 0
+conda run -n mrs-swarm --no-capture-output python -m swarm.run.plot runs/exp_skeleton/pendulum/s0
+```
+
+```
+swarm/
+├── envs/
+│   ├── predator_prey.py  env + reward + PRESETS + rollout. NOT a gymnax env: everything is per-agent
+│   ├── dynamics.py       step_motion — the extension seam for 3D / drone dynamics
+│   ├── metrics.py        DoS / DoA, pure functions of bare arrays
+│   └── scripted.py       the paper's §4.4 predator rule; the gate-2 baseline
+├── algo/
+│   ├── ddpg.py           actor, critic, replay buffer, update. Species-agnostic
+│   ├── train_gymnax.py   single-agent loop — the learner's regression harness
+│   └── config.py         every hyperparameter, with its reason, + PRESETS
+├── run/                  train.py, plot.py, render.py → runs/<exp>/<preset>/s<seed>/
+└── tests/test_smoke.py
+```
+
+Using the environments:
+
+- `swarm/envs/predator_prey.py` is a **module of functions**, not a gymnax class.
+  `reset(key, params)`, `step(state, action, params)` (no key — deterministic),
+  `rollout(key, params, policy)`. Agents are one packed array, predators first:
+  `pos[:n_pred]` / `pos[n_pred:]`. Actions are `(N, 2)` in `[-1, 1]`; the env
+  scales them (a_F is forward-only).
+- `EnvParams` fields that change array shapes or take a Python `if`
+  (`n_pred`, `n_prey`, `boundary`, `motion_mode`, `n_neighbors`, `episode_len`)
+  are `pytree_node=False` — pass `params` as a **static** argnum when jitting,
+  and changing one recompiles.
+- `get_obs` returns `{self, neighbors, mask}`, **allies first**; `flatten_obs`
+  produces the paper's 54-dim MLP input. An attention encoder is a second reader
+  of the same structured obs, not a rewrite.
+- Values are chosen in `PRESETS` (`envs/predator_prey.py` for physics,
+  `algo/config.py` for training) and nowhere else. `run/` only names a preset.
+- `runs/` is gitignored. `train.py` refuses a non-empty leaf without `--overwrite`.
+
+Deviations from the paper, all deliberate, all recorded at the top of
+`predator_prey.py`: agent radii (0.06 / 0.04) and initial velocity are unstated
+in the paper; observations use ally-first ordering and unit-vector headings.
+
+Smoke tests green before any change is called done.
 
 ## Layout and conventions
 
@@ -89,9 +152,8 @@ PureJaxRL-style PPO where the entire training loop is a single XLA program.
 `run/{train,eval,plot}.py` (CLI → `runs/<preset>_s<seed>/`), `cluster/` (RCI SLURM).
 
 ```bash
-# needs a JAX env (jax 0.10, flax, optax, distrax, gymnax — requirements.txt).
-# PPO_example/CLAUDE.md names a conda env `agiflight`; it does NOT exist on this
-# machine — create/point at an env before running anything here.
+# PPO_example/CLAUDE.md names a conda env `agiflight`; it does NOT exist here.
+# Use `conda run -n mrs-swarm` — same pins, that is where they came from.
 python tests/test_smoke.py     # ~15 s, THE GATE: env checks + a learning gate
 python run/train.py --steps 3e6 --num-envs 256 --num-steps 64 --num-minibatches 8   # CPU
 python run/train.py            # GPU defaults: 4096 envs, 50M steps
