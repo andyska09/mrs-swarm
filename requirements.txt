@@ -1,0 +1,11 @@
+# conda env `mrs-swarm`, python 3.11, CPU. Pins copied from PPO_example —
+# same stack, so a policy or wrapper can be diffed against it directly.
+jax==0.10.1
+jaxlib==0.10.1
+flax==0.12.7
+optax==0.2.8
+distrax==0.1.8
+gymnax==0.0.9
+numpy
+matplotlib
+imageio
