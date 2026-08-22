@@ -10,7 +10,11 @@ When talking to me start the message with "TARS:"
 
 - Blunt, minimal code. No base classes, protocols, registries. One file per
   concern, readable top to bottom.
-- Comments state constraints and reasons, not history.
+- **Comments: as few as possible.** Only where the code cannot say it itself —
+  a constraint, a non-obvious reason, a trap. Never restate what the line does.
+  One clear sentence beats three. No banner blocks, no section dividers.
+- Same for docstrings: a module gets a short one, a function only if its
+  contract is not obvious from its name and signature.
 
 **Answer the question I actually asked. Nothing more.** If I ask what a term means, explain
 the term - do not re-analyse the plan, do not revise your recommendations, do not rewrite
