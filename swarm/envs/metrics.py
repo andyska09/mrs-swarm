@@ -24,6 +24,9 @@ def dos(pos, edge, periodic):
 
     On a torus per-axis separation caps at edge/2, so D = edge*sqrt(2)/2; the
     paper's 22%/19% are comparable only under that normalisation.
+
+    Not density-normalised: nearest-neighbour distance falls as 1/sqrt(N), so
+    DoS compares only across runs with the same population.
     """
     _, d = nearest_neighbor(pos, edge, periodic)
     D = edge * jnp.sqrt(2.0) / (2.0 if periodic else 1.0)

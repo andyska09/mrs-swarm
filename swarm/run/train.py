@@ -1,16 +1,12 @@
-"""Train and write everything needed to plot, render, or re-evaluate later.
+"""Train and write everything needed to plot, render, or evaluate later.
 
-    python -m swarm.run.train --preset pendulum --exp exp_skeleton --seed 0
+    python -m swarm.run.train --preset flocking --exp exp_flocking
+    python -m swarm.run.train --preset pendulum --exp exp_skeleton --seeds 0
 
-Writes runs/<exp>/<preset>/s<seed>/:
-    config.json    full config + preset name, flat, so the tree is greppable
-    params.pkl     network params + obs-norm stats + a copy of the config
-    metrics.npz    per-episode arrays
-    summary.json   final numbers, wall time, steps/s, device
-    results.png    training curves
-
-Paths are deterministic and the leaf is no-clobber (--overwrite to replace), so
-aggregation can locate a run from its preset, exp and seed alone.
+Seeds run as one vmapped program, then each is written to its own leaf
+runs/<exp>/<preset>/s<seed>/ holding config.json, params.pkl, metrics.npz,
+summary.json and results.png. Leaves are no-clobber without --overwrite, so a
+path is fixed by exp, preset and seed alone and aggregation can find it.
 """
 import argparse
 import json
@@ -20,6 +16,7 @@ from dataclasses import asdict, replace
 from pathlib import Path
 
 import jax
+import jax.numpy as jnp
 import numpy as np
 
 from swarm.algo.config import PRESETS, get_train_config
@@ -31,66 +28,78 @@ ROOT = Path(__file__).resolve().parents[2]
 def parse():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--preset", default="pendulum", choices=list(PRESETS))
-    ap.add_argument("--exp", default="exp_skeleton", help="experiment folder; groups an ablation")
-    ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--preset", default="flocking", choices=list(PRESETS))
+    ap.add_argument("--exp", default=None, help="experiment folder; default exp_<preset>")
+    ap.add_argument("--seeds", type=int, nargs="+", default=[0, 1, 2, 3, 4])
     ap.add_argument("--episodes", type=int, default=None, help="override the preset")
     ap.add_argument("--overwrite", action="store_true")
     return ap.parse_args()
 
 
 def build(cfg):
-    """-> (train_fn, description). The only place an env id becomes an env."""
+    """The only place an env id becomes an env. -> (train_fn, description)."""
     if cfg.env_id == "predator_prey":
-        raise NotImplementedError("phase 2: the two-species loop is not written yet")
+        from swarm.algo.train_swarm import make_train
+        from swarm.envs import predator_prey as pp
+        params = pp.get_env_params(cfg.env_preset)
+        return make_train(cfg, params), f"predator_prey/{cfg.env_preset} " \
+                                        f"({params.n_pred}v{params.n_prey})"
     import gymnax
     from swarm.algo.train_gymnax import make_train
     env, env_params = gymnax.make(cfg.env_id)
     return make_train(cfg, env, env_params), cfg.env_id
 
 
-def main():
-    a = parse()
-    cfg = get_train_config(a.preset)
-    cfg = replace(cfg, seed=a.seed, **({"episodes": a.episodes} if a.episodes else {}))
-
-    out = ROOT / "runs" / a.exp / a.preset / f"s{a.seed}"
-    if out.exists() and any(out.iterdir()) and not a.overwrite:
-        raise SystemExit(f"{out} exists and is not empty. Use --overwrite.")
-    out.mkdir(parents=True, exist_ok=True)
-
-    train, desc = build(cfg)
-    print(f"device={jax.devices()[0]}  env={desc}  preset={a.preset}  seed={cfg.seed}  "
-          f"{cfg.episodes} x {cfg.episode_len} = {cfg.total_steps} steps")
-
-    t0 = time.time()
-    result = jax.block_until_ready(jax.jit(train)(jax.random.PRNGKey(cfg.seed)))
-    wall = time.time() - t0
-
-    metrics = {k: np.asarray(v) for k, v in result["metrics"].items()}
-    norm = result["obs_norm"]
-    config = {**asdict(cfg), "preset": a.preset, "exp": a.exp}
-
+def save(out, cfg, config, result, i, wall, n_seeds):
+    take = lambda tree: jax.device_get(jax.tree.map(lambda x: x[i], tree))
+    metrics = {k: np.asarray(v[i]) for k, v in result["metrics"].items()}
+    payload = {"config": config, **{k: take(result[k]) for k in result if k != "metrics"}}
     with open(out / "params.pkl", "wb") as f:
-        # Obs-norm stats are PART OF THE POLICY; the config is duplicated here so
-        # a checkpoint stays self-contained.
-        pickle.dump({"agent": jax.device_get(result["agent"]),
-                     "obs_mean": np.asarray(norm.mean), "obs_var": np.asarray(norm.var),
-                     "config": config}, f)
+        pickle.dump(payload, f)
     np.savez(out / "metrics.npz", **metrics)
     (out / "config.json").write_text(json.dumps(config, indent=2))
 
-    tail = lambda k, n=20: float(np.nanmean(metrics[k][-n:]))
-    summary = {"preset": a.preset, "exp": a.exp, "seed": cfg.seed,
+    tail = lambda k, n=100: float(np.nanmean(metrics[k][-n:]))
+    head = lambda k, n=100: float(np.nanmean(metrics[k][:n]))
+    summary = {**{k: config[k] for k in ("preset", "exp", "seed")},
                "total_steps": cfg.total_steps, "wall_s": round(wall, 1),
-               "steps_per_s": int(cfg.total_steps / wall), "device": str(jax.devices()[0]),
-               "first_return": float(np.nanmean(metrics["ep_return"][:20])),
-               "final_return": tail("ep_return")}
+               "steps_per_s": int(cfg.total_steps * n_seeds / wall),
+               "device": str(jax.devices()[0]),
+               **{f"{k}_first": head(k) for k in metrics},
+               **{f"{k}_final": tail(k) for k in metrics}}
     (out / "summary.json").write_text(json.dumps(summary, indent=2))
-    plot_metrics(metrics, out / "results.png", title=f"{a.exp}/{a.preset}/s{a.seed}")
+    plot_metrics(metrics, out / "results.png", title=f"{config['exp']}/{config['preset']}/s{i}")
+    return summary
 
-    print(f"done in {wall:.0f}s ({summary['steps_per_s']} steps/s) | "
-          f"return {summary['first_return']:.1f} -> {summary['final_return']:.1f} | -> {out}")
+
+def main():
+    a = parse()
+    exp = a.exp or f"exp_{a.preset}"
+    cfg = get_train_config(a.preset)
+    if a.episodes:
+        cfg = replace(cfg, episodes=a.episodes)
+
+    leaves = [ROOT / "runs" / exp / a.preset / f"s{s}" for s in a.seeds]
+    for out in leaves:
+        if out.exists() and any(out.iterdir()) and not a.overwrite:
+            raise SystemExit(f"{out} exists and is not empty. Use --overwrite.")
+        out.mkdir(parents=True, exist_ok=True)
+
+    train, desc = build(cfg)
+    print(f"device={jax.devices()[0]}  env={desc}  preset={a.preset}  seeds={a.seeds}  "
+          f"{cfg.episodes} x {cfg.episode_len} = {cfg.total_steps} steps each")
+
+    keys = jnp.stack([jax.random.PRNGKey(s) for s in a.seeds])
+    t0 = time.time()
+    result = jax.block_until_ready(jax.jit(jax.vmap(train))(keys))
+    wall = time.time() - t0
+
+    for i, (seed, out) in enumerate(zip(a.seeds, leaves)):
+        config = {**asdict(replace(cfg, seed=seed)), "preset": a.preset, "exp": exp}
+        s = save(out, cfg, config, result, i, wall, len(a.seeds))
+        key = "dos" if "dos_final" in s else "ep_return"
+        print(f"  s{seed}: {key} {s[key + '_first']:.3f} -> {s[key + '_final']:.3f}  -> {out}")
+    print(f"done in {wall:.0f}s ({int(cfg.total_steps * len(a.seeds) / wall)} steps/s total)")
 
 
 if __name__ == "__main__":

@@ -189,8 +189,11 @@ def compute_reward(state, action_phys, params):
     _, touching = _boundary_force(state.pos, r, params)
     wall = -params.boundary_penalty * touching.astype(jnp.float32)
 
-    info = {"captures": jnp.sum(cross.any(axis=0)).astype(jnp.float32),  # prey being eaten this step
-            "wall_contacts": jnp.sum(touching).astype(jnp.float32)}
+    # The two reward terms are logged apart: for an untrained agent the movement
+    # cost dominates survival, and only the split shows that.
+    info = {"captures": jnp.sum(cross.any(axis=0)).astype(jnp.float32),
+            "wall_contacts": jnp.sum(touching).astype(jnp.float32),
+            "survival": survival, "movement": movement + wall}
     return survival + movement + wall, info
 
 

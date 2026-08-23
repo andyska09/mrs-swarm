@@ -54,6 +54,13 @@ PRESETS = {
     # longer horizon than the paper's 0.95.
     "pendulum": TrainConfig(env_id="Pendulum-v1", episodes=300, episode_len=200,
                             gamma=0.99, buffer_size=100_000),
+
+    # Absent neighbours are encoded as exact zeros, and obs normalisation shifts
+    # them off zero into values a real neighbour could take. Hence normalize_obs=False.
+    "flocking": TrainConfig(env_preset="torus", normalize_obs=False),
+    "npred0": TrainConfig(env_preset="npred0", normalize_obs=False),
+    "npred1": TrainConfig(env_preset="npred1", normalize_obs=False),
+    "npred3": TrainConfig(env_preset="torus", normalize_obs=False),
 }
 
 
