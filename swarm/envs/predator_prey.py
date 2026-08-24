@@ -259,6 +259,11 @@ PRESETS = {
     "speed_35": EnvParams(speed_pred=0.3),                   # 3 : 5
     "perception_23": EnvParams(perception=4.0 / 3.0),
     "perception_13": EnvParams(perception=2.0 / 3.0),
+    "ep500": EnvParams(episode_len=500),
+    "ep500_eval50": EnvParams(episode_len=500, n_prey=50),
+    "rad15": EnvParams(radius_pred=0.09, radius_prey=0.06),
+    "rad20": EnvParams(radius_pred=0.12, radius_prey=0.08),
+    "rad30": EnvParams(radius_pred=0.18, radius_prey=0.12),
     "walls": EnvParams(boundary="walls"),                    # phase 4, swirling
 }
 

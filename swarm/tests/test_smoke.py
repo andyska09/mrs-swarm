@@ -218,13 +218,36 @@ def learning_gate():
     ok("DDPG learns on Pendulum-v1")
 
 
+def coevolution_gate():
+    print("COEVOLUTION GATE (short two-species run)")
+    from dataclasses import replace
+    from swarm.algo.train_swarm import make_train
+
+    cfg = replace(get_train_config("flocking"), episodes=80)
+    params = pp.get_env_params(cfg.env_preset)
+    t0 = time.time()
+    out = jax.block_until_ready(jax.jit(make_train(cfg, params))(jax.random.PRNGKey(0)))
+    wall = time.time() - t0
+
+    m = {k: np.asarray(v) for k, v in out["metrics"].items()}
+    for k, v in m.items():
+        assert np.all(np.isfinite(v)), f"{k} not finite"
+    print(f"  {cfg.total_steps} steps in {wall:.0f}s | captures "
+          f"{m['captures'][:20].mean():.3f} -> {m['captures'][-20:].mean():.3f} | "
+          f"q pred {m['pred_q'][-1]:+.2f} prey {m['prey_q'][-1]:+.2f}")
+    # Contact pays a predator +1 and a prey -1, so the two Q values must split in sign.
+    assert m["pred_q"][-1] > 0 > m["prey_q"][-1], "critics did not learn the sign of their reward"
+    ok("both species learn; DoS/DoA logged and finite")
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--env", action="store_true", help="skip the learning gate")
+    ap.add_argument("--env", action="store_true", help="skip the learning gates")
     a = ap.parse_args()
     metric_gates()
     env_gates()
     scripted_gate()
     if not a.env:
         learning_gate()
+        coevolution_gate()
     print("\n✅ ALL SMOKE TESTS PASSED")

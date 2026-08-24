@@ -27,6 +27,8 @@ def dos(pos, edge, periodic):
 
     Not density-normalised: nearest-neighbour distance falls as 1/sqrt(N), so
     DoS compares only across runs with the same population.
+    It is also floored at (r_i + r_j)/D, the contact diameter: agents cannot
+    overlap, so larger agents cannot reach a lower DoS.
     """
     _, d = nearest_neighbor(pos, edge, periodic)
     D = edge * jnp.sqrt(2.0) / (2.0 if periodic else 1.0)

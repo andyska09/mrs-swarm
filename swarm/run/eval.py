@@ -52,12 +52,15 @@ def main():
     ap.add_argument("run_dir", type=Path)
     ap.add_argument("--preset", default=None, help="env preset; default the one it trained on")
     ap.add_argument("--episodes", type=int, default=20)
+    ap.add_argument("--steps", type=int, default=None, help="override episode length")
     ap.add_argument("--gif", action="store_true")
     a = ap.parse_args()
 
     payload, cfg = load(a.run_dir)
     preset = a.preset or cfg.env_preset
     params = pp.get_env_params(preset)
+    if a.steps:
+        params = params.replace(episode_len=a.steps)
     policy = make_policy(payload, cfg, params)
     periodic = params.boundary == "torus"
 

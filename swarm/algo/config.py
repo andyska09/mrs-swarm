@@ -61,6 +61,16 @@ PRESETS = {
     "npred0": TrainConfig(env_preset="npred0", normalize_obs=False),
     "npred1": TrainConfig(env_preset="npred1", normalize_obs=False),
     "npred3": TrainConfig(env_preset="torus", normalize_obs=False),
+    "rad10": TrainConfig(env_preset="torus", normalize_obs=False),
+    "rad15": TrainConfig(env_preset="rad15", normalize_obs=False),
+    "rad20": TrainConfig(env_preset="rad20", normalize_obs=False),
+    "rad30": TrainConfig(env_preset="rad30", normalize_obs=False),
+    "speed11": TrainConfig(env_preset="torus", normalize_obs=False),
+    "speed53": TrainConfig(env_preset="speed_53", normalize_obs=False),
+    "speed35": TrainConfig(env_preset="speed_35", normalize_obs=False),
+    "perc33": TrainConfig(env_preset="torus", normalize_obs=False),
+    "perc23": TrainConfig(env_preset="perception_23", normalize_obs=False),
+    "perc13": TrainConfig(env_preset="perception_13", normalize_obs=False),
 }
 
 
