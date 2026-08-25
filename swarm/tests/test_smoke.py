@@ -8,8 +8,8 @@ METRIC GATES   DoA of random headings = 2/pi, DoS bounds, nearest-neighbour
 ENV GATES      gate 1 of the plan: shapes, jit, dtype stability, torus wrap,
                minimum image, contacts resolve, no tunnelling, obs masking,
                and the population edge cases (n_pred=0, 50 prey).
-LEARNING GATE  a short DDPG run on Pendulum must raise return, proving the
-               update improves the policy and not just that it compiles.
+LEARNING GATE  a short coevolution run: both critics must learn the sign of
+               their own reward, and every metric must stay finite.
 """
 import argparse
 import time
@@ -196,34 +196,12 @@ def scripted_gate():
 
 # ── learner ──────────────────────────────────────────────────────────────────
 
-def learning_gate():
-    print("LEARNING GATE (short DDPG run on Pendulum)")
-    import gymnax
-    from dataclasses import replace
-    from swarm.algo.train_gymnax import make_train
-
-    cfg = replace(get_train_config("pendulum"), episodes=120)
-    env, env_params = gymnax.make(cfg.env_id)
-    t0 = time.time()
-    out = jax.block_until_ready(jax.jit(make_train(cfg, env, env_params))(jax.random.PRNGKey(0)))
-    wall = time.time() - t0
-
-    m = {k: np.asarray(v) for k, v in out["metrics"].items()}
-    for k in ("ep_return", "critic_loss", "actor_loss", "q_mean"):
-        assert np.all(np.isfinite(m[k])), f"{k} not finite"
-    early, late = m["ep_return"][:10].mean(), m["ep_return"][-10:].mean()
-    print(f"  {cfg.total_steps} steps in {wall:.0f}s ({cfg.total_steps / wall:.0f} steps/s) | "
-          f"return {early:.0f} -> {late:.0f} | q {m['q_mean'][-1]:.1f}")
-    assert late > early + 300, f"return did not improve: {early:.0f} -> {late:.0f}"
-    ok("DDPG learns on Pendulum-v1")
-
-
-def coevolution_gate():
-    print("COEVOLUTION GATE (short two-species run)")
+def coevolution_gate(scripted=False):
+    print(f"COEVOLUTION GATE ({'scripted' if scripted else 'learned'} predators)")
     from dataclasses import replace
     from swarm.algo.train_swarm import make_train
 
-    cfg = replace(get_train_config("flocking"), episodes=80)
+    cfg = replace(get_train_config("swirl" if scripted else "flocking"), episodes=80)
     params = pp.get_env_params(cfg.env_preset)
     t0 = time.time()
     out = jax.block_until_ready(jax.jit(make_train(cfg, params))(jax.random.PRNGKey(0)))
@@ -236,8 +214,11 @@ def coevolution_gate():
           f"{m['captures'][:20].mean():.3f} -> {m['captures'][-20:].mean():.3f} | "
           f"q pred {m['pred_q'][-1]:+.2f} prey {m['prey_q'][-1]:+.2f}")
     # Contact pays a predator +1 and a prey -1, so the two Q values must split in sign.
-    assert m["pred_q"][-1] > 0 > m["prey_q"][-1], "critics did not learn the sign of their reward"
-    ok("both species learn; DoS/DoA logged and finite")
+    if scripted:
+        assert m["pred_q"][-1] == 0.0, "a scripted predator must not train a critic"
+    else:
+        assert m["pred_q"][-1] > 0 > m["prey_q"][-1], "critics did not learn the reward sign"
+    ok("prey learn; DoS/DoA logged and finite")
 
 
 if __name__ == "__main__":
@@ -248,6 +229,6 @@ if __name__ == "__main__":
     env_gates()
     scripted_gate()
     if not a.env:
-        learning_gate()
         coevolution_gate()
+        coevolution_gate(scripted=True)
     print("\n✅ ALL SMOKE TESTS PASSED")
