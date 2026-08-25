@@ -264,7 +264,8 @@ PRESETS = {
     "rad15": EnvParams(radius_pred=0.09, radius_prey=0.06),
     "rad20": EnvParams(radius_pred=0.12, radius_prey=0.08),
     "rad30": EnvParams(radius_pred=0.18, radius_prey=0.12),
-    "walls": EnvParams(boundary="walls"),                    # phase 4, swirling
+    "walls": EnvParams(boundary="walls"),
+    "walls_nopen": EnvParams(boundary="walls", boundary_penalty=0.0),                    # phase 4, swirling
 }
 
 

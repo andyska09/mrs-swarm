@@ -1,7 +1,6 @@
 """Train and write everything needed to plot, render, or evaluate later.
 
     python -m swarm.run.train --preset flocking --exp exp_flocking
-    python -m swarm.run.train --preset pendulum --exp exp_skeleton --seeds 0
 
 Seeds run as one vmapped program, then each is written to its own leaf
 runs/<exp>/<preset>/s<seed>/ holding config.json, params.pkl, metrics.npz,
@@ -37,17 +36,10 @@ def parse():
 
 
 def build(cfg):
-    """The only place an env id becomes an env. -> (train_fn, description)."""
-    if cfg.env_id == "predator_prey":
-        from swarm.algo.train_swarm import make_train
-        from swarm.envs import predator_prey as pp
-        params = pp.get_env_params(cfg.env_preset)
-        return make_train(cfg, params), f"predator_prey/{cfg.env_preset} " \
-                                        f"({params.n_pred}v{params.n_prey})"
-    import gymnax
-    from swarm.algo.train_gymnax import make_train
-    env, env_params = gymnax.make(cfg.env_id)
-    return make_train(cfg, env, env_params), cfg.env_id
+    from swarm.algo.train_swarm import make_train
+    from swarm.envs import predator_prey as pp
+    params = pp.get_env_params(cfg.env_preset)
+    return make_train(cfg, params), f"{cfg.env_preset} ({params.n_pred}v{params.n_prey})"
 
 
 def save(out, cfg, config, result, i, wall, n_seeds):
@@ -97,8 +89,7 @@ def main():
     for i, (seed, out) in enumerate(zip(a.seeds, leaves)):
         config = {**asdict(replace(cfg, seed=seed)), "preset": a.preset, "exp": exp}
         s = save(out, cfg, config, result, i, wall, len(a.seeds))
-        key = "dos" if "dos_final" in s else "ep_return"
-        print(f"  s{seed}: {key} {s[key + '_first']:.3f} -> {s[key + '_final']:.3f}  -> {out}")
+        print(f"  s{seed}: dos {s['dos_first']:.3f} -> {s['dos_final']:.3f}  -> {out}")
     print(f"done in {wall:.0f}s ({int(cfg.total_steps * len(a.seeds) / wall)} steps/s total)")
 
 

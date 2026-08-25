@@ -9,8 +9,7 @@ from dataclasses import dataclass
 @dataclass
 class TrainConfig:
     # ── what to train on ──
-    env_id: str = "predator_prey"   # "predator_prey", or a gymnax id
-    env_preset: str = "torus"       # key into envs.predator_prey.PRESETS; unused for gymnax
+    env_preset: str = "torus"       # key into envs.predator_prey.PRESETS
 
     # ── regime ──
     # The paper runs ONE environment: 2000 x 100 steps, one update per env step.
@@ -39,6 +38,9 @@ class TrainConfig:
 
     # Welford running mean/var. These stats are PART OF THE POLICY and must ship
     # with the checkpoint.
+    # Paper 4.4 drives the swirling runs with a rule-based predator, not a learned one.
+    scripted_predator: bool = False
+
     normalize_obs: bool = True
 
     seed: int = 0
@@ -49,12 +51,6 @@ class TrainConfig:
 
 
 PRESETS = {
-    # Phase 0 — the learner's regression harness: proves the DDPG update and the
-    # artifact plumbing on a known env. Pendulum's 200-step episode needs a
-    # longer horizon than the paper's 0.95.
-    "pendulum": TrainConfig(env_id="Pendulum-v1", episodes=300, episode_len=200,
-                            gamma=0.99, buffer_size=100_000),
-
     # Absent neighbours are encoded as exact zeros, and obs normalisation shifts
     # them off zero into values a real neighbour could take. Hence normalize_obs=False.
     "flocking": TrainConfig(env_preset="torus", normalize_obs=False),
@@ -71,6 +67,9 @@ PRESETS = {
     "perc33": TrainConfig(env_preset="torus", normalize_obs=False),
     "perc23": TrainConfig(env_preset="perception_23", normalize_obs=False),
     "perc13": TrainConfig(env_preset="perception_13", normalize_obs=False),
+    "swirl": TrainConfig(env_preset="walls", normalize_obs=False, scripted_predator=True),
+    "swirl_nopen": TrainConfig(env_preset="walls_nopen", normalize_obs=False,
+                               scripted_predator=True),
 }
 
 

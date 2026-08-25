@@ -9,6 +9,7 @@ import jax.numpy as jnp
 
 from swarm.algo import ddpg
 from swarm.envs import metrics, predator_prey as pp
+from swarm.envs.scripted import scripted_predator
 
 
 @struct.dataclass
@@ -33,6 +34,8 @@ def make_train(cfg, params):
     pred, prey = slice(0, n0), slice(n0, None)
     periodic = params.boundary == "torus"
     zero = jnp.float32(0.0)
+    no_aux = {"critic_loss": zero, "actor_loss": zero, "q_mean": zero}
+    pred_cap = 1 if cfg.scripted_predator else cfg.buffer_size
 
     def species_metrics(pos, theta):
         if pos.shape[0] < 2:
@@ -42,7 +45,8 @@ def make_train(cfg, params):
 
     def step(c, _):
         key, k_pred, k_prey, s_pred, s_prey = jax.random.split(c.key, 5)
-        a_pred = algo.act(c.pred, ddpg.normalize(c.pred_norm, c.obs[pred]), k_pred, c.eps, c.noise)
+        a_pred = (scripted_predator(c.state, params) if cfg.scripted_predator else
+                  algo.act(c.pred, ddpg.normalize(c.pred_norm, c.obs[pred]), k_pred, c.eps, c.noise))
         a_prey = algo.act(c.prey, ddpg.normalize(c.prey_norm, c.obs[prey]), k_prey, c.eps, c.noise)
 
         obs_d, state, reward, _, info = pp.step(
@@ -60,12 +64,16 @@ def make_train(cfg, params):
                                            ddpg.normalize(norm, no)))
 
             def skip(_):
-                return agent, {"critic_loss": zero, "actor_loss": zero, "q_mean": zero}
+                return agent, no_aux
 
             agent, aux = jax.lax.cond(buf.size >= cfg.learning_starts, do, skip, None)
             return agent, buf, norm, aux
 
-        p_agent, p_buf, p_norm, p_aux = learn(c.pred, c.pred_buf, c.pred_norm, pred, a_pred, s_pred)
+        if cfg.scripted_predator:
+            p_agent, p_buf, p_norm, p_aux = c.pred, c.pred_buf, c.pred_norm, no_aux
+        else:
+            p_agent, p_buf, p_norm, p_aux = learn(c.pred, c.pred_buf, c.pred_norm,
+                                                 pred, a_pred, s_pred)
         y_agent, y_buf, y_norm, y_aux = learn(c.prey, c.prey_buf, c.prey_norm, prey, a_prey, s_prey)
 
         dos, doa = species_metrics(state.pos[prey], state.theta[prey])
@@ -100,7 +108,7 @@ def make_train(cfg, params):
         k_pred, k_prey, k_reset, key = jax.random.split(key, 4)
         obs_d, state = pp.reset(k_reset, params)
         c = Carry(pred=algo.init(k_pred), prey=algo.init(k_prey),
-                  pred_buf=ddpg.new_buffer(cfg.buffer_size, dim, 2),
+                  pred_buf=ddpg.new_buffer(pred_cap, dim, 2),
                   prey_buf=ddpg.new_buffer(cfg.buffer_size, dim, 2),
                   pred_norm=ddpg.new_obsnorm(dim), prey_norm=ddpg.new_obsnorm(dim),
                   state=state, obs=pp.flatten_obs(obs_d), key=key,
