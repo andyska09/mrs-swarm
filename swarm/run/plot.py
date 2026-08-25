@@ -1,6 +1,6 @@
 """Training curves from metrics.npz.
 
-    python -m swarm.run.plot runs/exp_skeleton/pendulum/s0
+    python -m swarm.run.plot runs/exp_flocking/flocking/s0
 """
 import argparse
 from pathlib import Path

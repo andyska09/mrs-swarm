@@ -97,14 +97,22 @@ def untrained_like(cfg, params, key):
                         "prey_norm": ddpg.new_obsnorm(dim)}, cfg, params)
 
 
+def _length(params, steps):
+    return params.replace(episode_len=steps) if steps else params
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--preset", default=None, choices=list(pp.PRESETS))
     ap.add_argument("--compare", type=Path, default=None, help="run dir: untrained beside trained")
+    ap.add_argument("--runs", nargs="+", type=Path, default=None,
+                    help="run dirs: one trained panel each, labelled by cell")
+    ap.add_argument("--untrained", action="store_true", help="prepend an untrained panel")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--stride", type=int, default=1)
     ap.add_argument("--trail", type=int, default=0, help="draw the last N steps of each path")
+    ap.add_argument("--steps", type=int, default=None, help="episode length; overrides the preset")
     ap.add_argument("--fps", type=int, default=15)
     ap.add_argument("--out", type=Path, default=None)
     a = ap.parse_args()
@@ -112,17 +120,29 @@ def main():
     roll = lambda p, pol: jax.jit(pp.rollout, static_argnums=(1, 2))(
         jax.random.PRNGKey(a.seed), p, pol)
 
-    if a.compare:
+    if a.runs:
+        from swarm.run.eval import load, make_policy
+        loaded = [load(r) for r in a.runs]
+        params = _length(pp.get_env_params(a.preset or loaded[0][1].env_preset), a.steps)
+        trajs, labels = [], []
+        if a.untrained:
+            trajs.append(roll(params, untrained_like(loaded[0][1], params, jax.random.PRNGKey(0)))[0])
+            labels.append("untrained")
+        for r, (payload, cfg) in zip(a.runs, loaded):
+            trajs.append(roll(params, make_policy(payload, cfg, params))[0])
+            labels.append(r.parent.name)
+        out = a.out or a.runs[0].parents[1] / "compare.gif"
+    elif a.compare:
         from swarm.run.eval import load, make_policy
         payload, cfg = load(a.compare)
-        params = pp.get_env_params(a.preset or cfg.env_preset)
+        params = _length(pp.get_env_params(a.preset or cfg.env_preset), a.steps)
         # Same env seed both sides, so the initial state is identical.
         trajs = [roll(params, untrained_like(cfg, params, jax.random.PRNGKey(0)))[0],
                  roll(params, make_policy(payload, cfg, params))[0]]
         labels = ["before coevolution", "after coevolution"]
         out = a.out or a.compare / "before_after.gif"
     else:
-        params = pp.get_env_params(a.preset or "torus")
+        params = _length(pp.get_env_params(a.preset or "torus"), a.steps)
         trajs, labels = [roll(params, scripted_vs_random)[0]], ["scripted predators, random prey"]
         out = a.out or ROOT / "runs" / "exp_physics" / params.boundary / f"s{a.seed}" / "render.gif"
 

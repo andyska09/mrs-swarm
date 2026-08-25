@@ -20,6 +20,7 @@ import numpy as np
 from swarm.algo import ddpg
 from swarm.algo.config import TrainConfig
 from swarm.envs import metrics, predator_prey as pp
+from swarm.envs.scripted import scripted_predator
 
 
 def load(run_dir):
@@ -39,7 +40,8 @@ def make_policy(payload, cfg, params):
     def policy(key, obs, state, _params):
         flat = pp.flatten_obs(obs)
         k0, k1 = jax.random.split(key)
-        a0 = algo.act(payload["pred"], ddpg.normalize(payload["pred_norm"], flat[:n0]), k0, 0.0, 0.0)
+        a0 = (scripted_predator(state, _params) if cfg.scripted_predator else
+              algo.act(payload["pred"], ddpg.normalize(payload["pred_norm"], flat[:n0]), k0, 0.0, 0.0))
         a1 = algo.act(payload["prey"], ddpg.normalize(payload["prey_norm"], flat[n0:]), k1, 0.0, 0.0)
         return jnp.concatenate([a0, a1])
 
