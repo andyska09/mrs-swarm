@@ -65,16 +65,17 @@ how the platform gets validated; the platform is the end.
 | — | `research/code_sources/quad-swarm-rl` | separate PyTorch stack, not created yet |
 
 `mrs-swarm` is conda + python 3.11, CPU: jax/jaxlib 0.10.1, flax 0.12.7, optax
-0.2.8, distrax 0.1.8, gymnax 0.0.9, matplotlib, imageio ([requirements.txt](requirements.txt),
+0.2.8, matplotlib, imageio ([requirements.txt](requirements.txt),
 pins copied from PPO_example). Use `conda run`, not `source activate`. Run
 everything from the repo root as `-m swarm.…`.
 
 ```bash
 conda run -n mrs-swarm --no-capture-output python -m swarm.tests.test_smoke        # THE GATE, ~30 s
 conda run -n mrs-swarm --no-capture-output python -m swarm.tests.test_smoke --env  # env gates only, ~8 s
-conda run -n mrs-swarm --no-capture-output python -m swarm.run.train --preset pendulum --exp exp_skeleton --seed 0
-conda run -n mrs-swarm --no-capture-output python -m swarm.run.render --preset torus --seed 0
-conda run -n mrs-swarm --no-capture-output python -m swarm.run.plot runs/exp_skeleton/pendulum/s0
+conda run -n mrs-swarm --no-capture-output python -m swarm.run.train --preset flocking --exp exp_flocking
+conda run -n mrs-swarm --no-capture-output python -m swarm.run.eval runs/exp_flocking/flocking/s0 --preset eval50 --gif
+conda run -n mrs-swarm --no-capture-output python -m swarm.run.render --compare runs/exp_flocking/flocking/s0 --trail 100
+conda run -n mrs-swarm --no-capture-output python -m swarm.run.aggregate exp_npredators
 ```
 
 ```
@@ -86,9 +87,10 @@ swarm/
 │   └── scripted.py       the paper's §4.4 predator rule; the gate-2 baseline
 ├── algo/
 │   ├── ddpg.py           actor, critic, replay buffer, update. Species-agnostic
-│   ├── train_gymnax.py   single-agent loop — the learner's regression harness
+│   ├── train_swarm.py    two-species coevolution loop; seeds are vmapped
 │   └── config.py         every hyperparameter, with its reason, + PRESETS
-├── run/                  train.py, plot.py, render.py → runs/<exp>/<preset>/s<seed>/
+├── run/                  train.py, eval.py, plot.py, render.py, aggregate.py
+│                         → runs/<exp>/<preset>/s<seed>/, results/<exp>.md
 └── tests/test_smoke.py
 ```
 
@@ -108,7 +110,10 @@ Using the environments:
   of the same structured obs, not a rewrite.
 - Values are chosen in `PRESETS` (`envs/predator_prey.py` for physics,
   `algo/config.py` for training) and nowhere else. `run/` only names a preset.
-- `runs/` is gitignored. `train.py` refuses a non-empty leaf without `--overwrite`.
+- `runs/` is gitignored; `results/<exp>.md` is tracked. `train.py` refuses a
+  non-empty leaf without `--overwrite`, and is deterministic in (preset, seed).
+- `scripted_predator=True` (paper 4.4, the swirling runs) replaces the predator
+  actor with the rule in `envs/scripted.py`; only prey learn.
 
 Deviations from the paper, all deliberate, all recorded at the top of
 `predator_prey.py`: agent radii (0.06 / 0.04) and initial velocity are unstated
