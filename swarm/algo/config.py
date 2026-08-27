@@ -19,6 +19,12 @@ class TrainConfig:
     episode_len: int = 100
     learning_starts: int = 1000     # not in the paper; buffer must hold >= batch_size to sample
 
+    # ── schedule ──
+    freeze_period: int = 0          # 0 = simultaneous; else episodes per phase, predator first
+    n_ckpt: int = 10                # policies stacked during the run
+
+    n_envs: int = 1                 # independent worlds sharing one buffer; adds no updates
+
     # ── networks ── 3 hidden layers x 64, ReLU, both actor and critic
     hidden_dims: tuple = (64, 64, 64)
 
@@ -45,6 +51,14 @@ class TrainConfig:
 
     seed: int = 0
 
+    def __post_init__(self):
+        assert self.episodes % self.n_ckpt == 0, "checkpoints must divide the run evenly"
+        if self.freeze_period:
+            # Whole phase pairs per chunk, so every checkpoint ends on a prey phase.
+            pair = 2 * self.freeze_period
+            assert (self.episodes // self.n_ckpt) % pair == 0, \
+                f"episodes/n_ckpt must be a multiple of {pair}"
+
     @property
     def total_steps(self) -> int:
         return self.episodes * self.episode_len
@@ -67,6 +81,12 @@ PRESETS = {
     "perc33": TrainConfig(env_preset="torus", normalize_obs=False),
     "perc23": TrainConfig(env_preset="perception_23", normalize_obs=False),
     "perc13": TrainConfig(env_preset="perception_13", normalize_obs=False),
+    # exp_duration. alt is 2x the episodes for the same compute: a frozen species
+    # does no backprop, so both cells give each species 2M updates.
+    "long": TrainConfig(env_preset="torus", normalize_obs=False, episodes=20_000),
+    "par16": TrainConfig(env_preset="torus", normalize_obs=False, episodes=20_000, n_envs=16),
+    "alt": TrainConfig(env_preset="torus", normalize_obs=False, episodes=40_000,
+                       freeze_period=500),
     "swirl": TrainConfig(env_preset="walls", normalize_obs=False, scripted_predator=True),
     "swirl_nopen": TrainConfig(env_preset="walls_nopen", normalize_obs=False,
                                scripted_predator=True),

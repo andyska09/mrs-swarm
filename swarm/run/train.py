@@ -78,8 +78,9 @@ def main():
         out.mkdir(parents=True, exist_ok=True)
 
     train, desc = build(cfg)
+    sched = f"alternating/{cfg.freeze_period}" if cfg.freeze_period else "simultaneous"
     print(f"device={jax.devices()[0]}  env={desc}  preset={a.preset}  seeds={a.seeds}  "
-          f"{cfg.episodes} x {cfg.episode_len} = {cfg.total_steps} steps each")
+          f"{sched}  {cfg.episodes} x {cfg.episode_len} = {cfg.total_steps} steps each")
 
     keys = jnp.stack([jax.random.PRNGKey(s) for s in a.seeds])
     t0 = time.time()

@@ -17,15 +17,26 @@ def smooth(x, w):
     return np.convolve(x, np.ones(w) / w, mode="valid")
 
 
+def shade_frozen(ax, prey_learning):
+    edges = np.diff(np.concatenate([[1.0], prey_learning, [1.0]]))
+    for s, e in zip(np.where(edges < 0)[0], np.where(edges > 0)[0]):
+        ax.axvspan(s, e, color="0.88", lw=0, zorder=0)
+
+
 def plot_metrics(metrics, path, title=""):
     keys = [k for k in metrics if metrics[k].ndim == 1]
     ncol = 3
     nrow = int(np.ceil(len(keys) / ncol))
     fig, axes = plt.subplots(nrow, ncol, figsize=(4 * ncol, 3 * nrow), squeeze=False)
     w = max(1, len(metrics[keys[0]]) // 50)
+    frozen = metrics.get("prey_learning")
+    if frozen is not None and frozen.min() == frozen.max():
+        frozen = None
 
     for ax, k in zip(axes.flat, keys):
         y = metrics[k]
+        if frozen is not None:
+            shade_frozen(ax, frozen)
         ax.plot(y, alpha=0.25, lw=0.8)
         s = smooth(y, w)
         ax.plot(np.arange(len(s)) + w // 2, s, lw=1.6)

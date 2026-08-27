@@ -165,8 +165,8 @@ def get_obs(state, params):
 
 def flatten_obs(obs):
     """The paper's MLP input: self features then the flattened neighbour block."""
-    n = obs["self"].shape[0]
-    return jnp.concatenate([obs["self"], obs["neighbors"].reshape(n, -1)], axis=-1)
+    nb = obs["neighbors"]
+    return jnp.concatenate([obs["self"], nb.reshape(*nb.shape[:-2], -1)], axis=-1)
 
 
 # ── reward ───────────────────────────────────────────────────────────────────
@@ -193,7 +193,8 @@ def compute_reward(state, action_phys, params):
     # cost dominates survival, and only the split shows that.
     info = {"captures": jnp.sum(cross.any(axis=0)).astype(jnp.float32),
             "wall_contacts": jnp.sum(touching).astype(jnp.float32),
-            "survival": survival, "movement": movement + wall}
+            "survival": survival, "movement": movement + wall,
+            "a_f": action_phys[:, 0], "a_r": jnp.abs(action_phys[:, 1])}
     return survival + movement + wall, info
 
 
@@ -261,6 +262,7 @@ PRESETS = {
     "perception_13": EnvParams(perception=2.0 / 3.0),
     "ep500": EnvParams(episode_len=500),
     "ep500_eval50": EnvParams(episode_len=500, n_prey=50),
+    "ep500_7v40": EnvParams(episode_len=500, n_pred=7, n_prey=40),
     "rad15": EnvParams(radius_pred=0.09, radius_prey=0.06),
     "rad20": EnvParams(radius_pred=0.12, radius_prey=0.08),
     "rad30": EnvParams(radius_pred=0.18, radius_prey=0.12),

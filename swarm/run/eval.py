@@ -33,6 +33,17 @@ def load(run_dir):
     return payload, cfg
 
 
+def at_ckpt(payload, i):
+    """Swap in the i-th checkpoint (1-based) saved during training."""
+    if "ckpts" not in payload:
+        raise SystemExit("this run predates checkpointing; drop --ckpt")
+    ck = jax.tree.map(lambda x: x[i - 1], payload["ckpts"])
+    return {**payload,
+            "pred": payload["pred"].replace(actor=ck["pred"]),
+            "prey": payload["prey"].replace(actor=ck["prey"]),
+            "pred_norm": ck["pred_norm"], "prey_norm": ck["prey_norm"]}
+
+
 def make_policy(payload, cfg, params):
     algo = ddpg.make_ddpg(cfg, pp.obs_dim(params), 2)
     n0 = params.n_pred
@@ -55,11 +66,16 @@ def main():
     ap.add_argument("--preset", default=None, help="env preset; default the one it trained on")
     ap.add_argument("--episodes", type=int, default=20)
     ap.add_argument("--steps", type=int, default=None, help="override episode length")
+    ap.add_argument("--ckpt", type=int, default=None,
+                    help="1-based checkpoint index; default the final policy")
     ap.add_argument("--gif", action="store_true")
     a = ap.parse_args()
 
     payload, cfg = load(a.run_dir)
+    if a.ckpt:
+        payload = at_ckpt(payload, a.ckpt)
     preset = a.preset or cfg.env_preset
+    tag = f"{preset}_c{a.ckpt}" if a.ckpt else preset
     params = pp.get_env_params(preset)
     if a.steps:
         params = params.replace(episode_len=a.steps)
@@ -74,14 +90,14 @@ def main():
                                                metrics.doa(p, t, params.edge, periodic))))
     dos, doa = per_step(prey_pos, prey_th)
 
-    out = {"run": str(a.run_dir), "env_preset": preset, "episodes": a.episodes,
+    out = {"run": str(a.run_dir), "env_preset": preset, "ckpt": a.ckpt, "episodes": a.episodes,
            "dos": float(dos.mean()), "dos_std": float(dos.mean(1).std()),
            "doa": float(doa.mean()), "doa_std": float(doa.mean(1).std()),
            "dos_final_quarter": float(dos[:, -params.episode_len // 4:].mean()),
            "doa_final_quarter": float(doa[:, -params.episode_len // 4:].mean()),
            "captures_per_step": float(info["captures"].mean()),
            "prey_return": float(np.asarray(rewards)[:, :, params.n_pred:].sum(1).mean())}
-    (a.run_dir / f"eval_{preset}.json").write_text(json.dumps(out, indent=2))
+    (a.run_dir / f"eval_{tag}.json").write_text(json.dumps(out, indent=2))
     for k, v in out.items():
         print(f"  {k:20s} {v}")
 
@@ -89,7 +105,7 @@ def main():
         import imageio.v2 as imageio
         from swarm.run.render import frames
         ep0 = jax.tree.map(lambda x: x[0], traj)
-        path = a.run_dir / f"eval_{preset}.gif"
+        path = a.run_dir / f"eval_{tag}.gif"
         imageio.mimsave(path, list(frames(ep0, params)), fps=15, loop=0)
         print(f"  -> {path}")
 
