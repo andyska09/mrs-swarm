@@ -275,7 +275,7 @@ for episode = 1 .. M:                      # M = 2000
         y_i = r_i + γ·Q_i′(o_i′, a_i′)
         update critic by minimizing L(θ_i^Q)
         update actor by sampled policy gradient
-    soft-update targets                    # see note below
+        soft-update targets
 ```
 
 | Aspect | What the paper says | Source |
@@ -288,10 +288,6 @@ for episode = 1 .. M:                      # M = 2000
 | Optimizer | **not stated** (Adam is the MADDPG default of [25]) | — |
 | Stopping criterion | "until a state of dynamic equilibrium is achieved between the predators and prey, such that neither party can obtain their future rewards by altering their respective policies" | appendix B |
 
-**Soft-update placement is genuinely ambiguous in the transcript.** As typeset in
-algorithm 1 the soft-update line sits at the same indent as the inner `for t`
-loop's closing `end`, which reads as *once per episode*; standard MADDPG [25]
-soft-updates every step. This is one to resolve by intent, not by the transcript.
 
 ---
 
@@ -429,7 +425,6 @@ candidate explanation for any divergence.
 | Where the action enters the critic | never stated |
 | Optimizer | never stated |
 | Buffer warm-up before first update | never stated |
-| Soft-update frequency (per step vs. per episode) | ambiguous as typeset in algorithm 1 |
 | How ε and Gaussian noise `N_t` combine | ε appears only in appendix B, not in algorithm 1 |
 | Number of seeds behind the 95% CI bands | never stated |
 | Max speed enforcement (clip vs. drag equilibrium) | "max speed" is tabulated but no clipping step appears in the appendix B integration order |
