@@ -221,6 +221,26 @@ def coevolution_gate(scripted=False):
     ok("prey learn; DoS/DoA logged and finite")
 
 
+def freeze_gate():
+    print("FREEZE GATE")
+    from dataclasses import replace
+    from swarm.algo.train_swarm import make_train
+
+    cfg = replace(get_train_config("alt"), episodes=20, freeze_period=5, n_ckpt=2)
+    params = pp.get_env_params(cfg.env_preset)
+    out = jax.block_until_ready(jax.jit(make_train(cfg, params))(jax.random.PRNGKey(0)))
+    m = {k: np.asarray(v) for k, v in out["metrics"].items()}
+
+    assert m["pred_learning"][0] == 1.0 and m["prey_learning"][0] == 0.0, "predator must go first"
+    for who in ("pred", "prey"):
+        frozen = m[f"{who}_learning"] == 0.0
+        assert frozen.any() and (~frozen).any(), f"{who} never alternates"
+        assert np.all(m[f"{who}_actor_loss"][frozen] == 0.0), f"{who} updated while frozen"
+    assert jax.tree.leaves(out["ckpts"])[0].shape[0] == cfg.n_ckpt
+    ok(f"{cfg.freeze_period}-episode phases: a frozen species takes no gradient step; "
+       f"{cfg.n_ckpt} checkpoints saved")
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--env", action="store_true", help="skip the learning gates")
@@ -231,4 +251,5 @@ if __name__ == "__main__":
     if not a.env:
         coevolution_gate()
         coevolution_gate(scripted=True)
+        freeze_gate()
     print("\n✅ ALL SMOKE TESTS PASSED")
