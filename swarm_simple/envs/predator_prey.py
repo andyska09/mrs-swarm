@@ -11,6 +11,7 @@ import jax
 import jax.numpy as jnp
 
 SPAWN_TRIES = 100  # bound on the rejection sampler; dense arenas give up and overlap
+EPS = 1e-12  # divide-by-zero guard
 
 
 class State(NamedTuple):
@@ -108,3 +109,63 @@ def reset(key, cfg):
         ),
         time=jnp.int32(0),
     )
+
+
+def wrap_angle(theta):
+    return (theta + jnp.pi) % (2 * jnp.pi) - jnp.pi
+
+
+def _wrap_pos(pos, cfg):
+    if cfg.boundary == "torus":
+        return (pos + cfg.edge / 2) % cfg.edge - cfg.edge / 2
+    return pos
+
+
+def scale_action(action, cfg):
+    """Actor output in [-1, 1]^2 -> physical (a_F, a_R). Spec 1.3."""
+    a = jnp.clip(action, -1.0, 1.0)
+    return (a[:, 0] + 1.0) * 0.5 * cfg.max_acc, a[:, 1] * cfg.max_ang_vel
+
+
+def contact_force(pos, cfg):
+    """Hooke on overlap, summed over contacts: f_a = sum_j f_a,j."""
+    r = radii(cfg)
+    rel = delta(pos[:, None, :], pos[None, :, :], cfg)  # rel[i, j] = pos_j - pos_i
+    dist = jnp.linalg.norm(rel, axis=-1)
+    overlap = jnp.maximum(r[:, None] + r[None, :] - dist, 0.0)
+    overlap = overlap * (1.0 - jnp.eye(pos.shape[0]))
+    # Exactly coincident agents get zero force: the direction is 0/0 and there is
+    # no non-arbitrary way to break the tie. Spawning guarantees it cannot happen.
+    away = -rel / (dist[..., None] + EPS)
+    return cfg.stiffness * jnp.sum(overlap[..., None] * away, axis=1)
+
+
+def wall_force(pos, cfg):
+    """-> (force, per-agent 'touching a wall'). Both zero on a torus."""
+    if cfg.boundary == "torus":
+        return jnp.zeros_like(pos), jnp.zeros(pos.shape[0], dtype=bool)
+    r, half = radii(cfg)[:, None], cfg.edge / 2
+    lo = jnp.maximum((-half + r) - pos, 0.0)
+    hi = jnp.maximum(pos - (half - r), 0.0)
+    return cfg.stiffness * (lo - hi), jnp.any((lo > 0.0) | (hi > 0.0), axis=-1)
+
+
+def step(state, action, cfg):
+    a_f, a_r = scale_action(action, cfg)
+
+    theta = wrap_angle(state.theta + a_r * cfg.dt)
+    h = jnp.stack([jnp.cos(theta), jnp.sin(theta)], axis=-1)
+
+    force = (
+        a_f[:, None] * h
+        - cfg.drag * state.vel
+        + contact_force(state.pos, cfg)
+        + wall_force(state.pos, cfg)[0]
+    )
+    vel = state.vel + force * cfg.dt / masses(cfg)[:, None]
+    speed = jnp.linalg.norm(vel, axis=-1, keepdims=True)
+    vel = vel * jnp.minimum(1.0, max_speeds(cfg)[:, None] / (speed + EPS))
+
+    # The paper integrates position with the PRE-update velocity. Not a typo.
+    pos = _wrap_pos(state.pos + state.vel * cfg.dt, cfg)
+    return State(pos=pos, vel=vel, theta=theta, time=state.time + 1)
