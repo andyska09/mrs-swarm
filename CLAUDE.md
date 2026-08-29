@@ -52,7 +52,28 @@ Project goals ([research/notes/goals.md](research/notes/goals.md), written in Cz
 4. Push the paper further: add attention, a 3D environment, and/or more
    sophisticated dynamics.
 
-## swarm/ — our code
+## swarm_simple/ — the rewrite, and the only code being worked on
+
+Ground-up reimplementation, CleanRL style. `swarm/` below is the old buggy
+version, kept for reference only — do not carry its design over.
+
+The two references, in this order:
+[research/notes/li2023_spec.md](research/notes/li2023_spec.md) is the paper side
+only; [research/notes/choices.md](research/notes/choices.md) is every decision
+the paper does not make for us, and what we hardcode where it does.
+
+```bash
+conda run -n mrs-swarm --no-capture-output python -m swarm_simple.run.train configs/flocking.json --seeds 0 1 2
+conda run -n mrs-swarm --no-capture-output python -m swarm_simple.tests.test_env
+```
+
+```
+configs/      hand-written COMPLETE json. Missing and unknown keys are both errors.
+runs/         append-only pool, <timestamp>_<hash8>/ with config.json, meta.json, s<seed>/
+experiments/  a list of run ids and nothing else — a view over the pool
+```
+
+## swarm/ — the old implementation, reference only
 
 Plan: [research/notes/plan.md](research/notes/plan.md). Replicating Li 2023 is
 how the platform gets validated; the platform is the end.
@@ -61,8 +82,12 @@ how the platform gets validated; the platform is the end.
 
 | env | for | how |
 |---|---|---|
-| `mrs-swarm` | `swarm/` and `research/code_sources/PPO_example` | `conda run -n mrs-swarm --no-capture-output python ...` |
+| `mrs-swarm` | `swarm_simple/`, `swarm/`, `research/code_sources/PPO_example` | `conda run -n mrs-swarm --no-capture-output python ...` |
 | — | `research/code_sources/quad-swarm-rl` | separate PyTorch stack, not created yet |
+
+**NEVER run bare `python` or `python3`.** The system interpreter has no jax. Every
+invocation goes through `conda run -n mrs-swarm --no-capture-output`, including
+one-off checks and test scripts.
 
 `mrs-swarm` is conda + python 3.11, CPU: jax/jaxlib 0.10.1, flax 0.12.7, optax
 0.2.8, matplotlib, imageio ([requirements.txt](requirements.txt),
