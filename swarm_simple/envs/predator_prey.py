@@ -169,6 +169,11 @@ def step(state, action, cfg):
     return State(pos=pos, vel=vel, theta=theta, time=state.time + 1)
 
 
+def act_dim(cfg):
+    """d_a = 2: (a_F, a_R)"""
+    return 2
+
+
 def heading_dim(cfg):
     return 2 if cfg.heading_encoding == "unit" else 1
 
