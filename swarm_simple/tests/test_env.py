@@ -363,6 +363,54 @@ def test_wall_penalty_fires_only_against_a_boundary():
     assert jnp.allclose(info["wall"], jnp.array([-walls.boundary_penalty, 0.0]))
 
 
+def _random_policy(key, obs):
+    return jax.random.uniform(key, (obs.shape[0], 2), minval=-1.0, maxval=1.0)
+
+
+ROLLOUT = jax.jit(pp.rollout, static_argnums=(1, 2))
+
+
+def test_rollout_shapes_and_length():
+    states, rewards, info = ROLLOUT(KEYS[0], CFG, _random_policy)
+    t, n = CFG.episode_len, pp.n_agents(CFG)
+    assert states.pos.shape == (t, n, 2)
+    assert states.theta.shape == (t, n)
+    assert rewards.shape == (t, n)
+    assert info["captures"].shape == (t,)
+    assert int(states.time[-1]) == t
+
+
+def test_rollout_is_deterministic_in_key_and_config():
+    a = ROLLOUT(KEYS[0], CFG, _random_policy)[1]
+    b = ROLLOUT(KEYS[0], CFG, _random_policy)[1]
+    c = ROLLOUT(KEYS[1], CFG, _random_policy)[1]
+    assert jnp.array_equal(a, b)
+    assert not jnp.array_equal(a, c)
+
+
+def test_long_rollout_stays_finite_and_bounded():
+    long = replace(CFG, episode_len=2000)
+    states, rewards, _ = jax.jit(pp.rollout, static_argnums=(1, 2))(
+        KEYS[0], long, _random_policy
+    )
+    assert jnp.all(jnp.isfinite(states.pos)) and jnp.all(jnp.isfinite(rewards))
+    assert jnp.all(jnp.abs(states.pos) <= long.edge / 2 + 1e-6)
+    speed = jnp.linalg.norm(states.vel, axis=-1)
+    assert float(speed.max()) <= float(pp.max_speeds(long).max()) + 1e-6
+
+
+def test_the_policy_is_handed_observations_not_state():
+    """A policy taking (key, obs) cannot reach around the perception limit."""
+    seen = []
+
+    def spy(key, obs):
+        seen.append(obs.shape)
+        return jnp.zeros((obs.shape[0], 2))
+
+    pp.rollout(KEYS[0], replace(CFG, episode_len=2), spy)
+    assert seen == [(pp.n_agents(CFG), pp.obs_dim(CFG))]
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):

@@ -225,16 +225,14 @@ def observe(state, cfg):
 
 
 def contacts(pos, cfg):
-    """(N, N) bool: discs that overlap. Capture IS contact,
-    """
+    """(N, N) bool: discs that overlap. Capture IS contact,"""
     r = radii(cfg)
     dist = jnp.linalg.norm(delta(pos[:, None, :], pos[None, :, :], cfg), axis=-1)
     return (dist < r[:, None] + r[None, :]) & ~jnp.eye(pos.shape[0], dtype=bool)
 
 
 def reward(state, action, cfg):
-    """-> (reward (N,), info) An agent touching several adversaries still scores once.
-    """
+    """-> (reward (N,), info) An agent touching several adversaries still scores once."""
     n0 = cfg.n_pred
     cross = contacts(state.pos, cfg)[:n0, n0:]  # (n_pred, n_prey)
     hunting = jnp.any(cross, axis=1).astype(jnp.float32)
@@ -252,3 +250,21 @@ def reward(state, action, cfg):
         "captures": hunted.sum(),
     }
     return survival + movement + wall, info
+
+
+def rollout(key, cfg, policy):
+    """One episode under `policy(key, obs) -> (N, 2)` in [-1, 1].
+
+    return: (states, rewards, info), time on the leading axis.
+    """
+
+    def tick(carry, _):
+        state, key = carry
+        key, k = jax.random.split(key)
+        action = policy(k, observe(state, cfg))
+        state = step(state, action, cfg)
+        r, info = reward(state, action, cfg)
+        return (state, key), (state, r, info)
+
+    _, out = jax.lax.scan(tick, (reset(key, cfg), key), None, length=cfg.episode_len)
+    return out
