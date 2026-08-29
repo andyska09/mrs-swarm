@@ -134,8 +134,6 @@ def contact_force(pos, cfg):
     dist = jnp.linalg.norm(rel, axis=-1)
     overlap = jnp.maximum(r[:, None] + r[None, :] - dist, 0.0)
     overlap = overlap * (1.0 - jnp.eye(pos.shape[0]))
-    # Exactly coincident agents get zero force: the direction is 0/0 and there is
-    # no non-arbitrary way to break the tie. Spawning guarantees it cannot happen.
     away = -rel / (dist[..., None] + EPS)
     return cfg.stiffness * jnp.sum(overlap[..., None] * away, axis=1)
 
@@ -169,3 +167,58 @@ def step(state, action, cfg):
     # The paper integrates position with the PRE-update velocity. Not a typo.
     pos = _wrap_pos(state.pos + state.vel * cfg.dt, cfg)
     return State(pos=pos, vel=vel, theta=theta, time=state.time + 1)
+
+
+def heading_dim(cfg):
+    return 2 if cfg.heading_encoding == "unit" else 1
+
+
+def obs_dim(cfg):
+    """54 with unit headings, 41 with raw angles"""
+    return 4 + heading_dim(cfg) + 2 * cfg.n_neighbors * (2 + heading_dim(cfg))
+
+
+def heading(theta, cfg):
+    if cfg.heading_encoding == "unit":
+        return jnp.stack([jnp.cos(theta), jnp.sin(theta)], axis=-1)
+    return theta[..., None]
+
+
+def _nearest(rel, head, dist, k, radius):
+   """One species' neighbours -> k fixed slots, nearest first, zeroed beyond `radius`.
+
+    return: (features (n, k, 2 + heading_dim), mask (n, k)). If the species has
+    fewer than k members the spare slots are padded at infinite distance.
+    """
+    n, m = dist.shape
+    head = jnp.broadcast_to(head[None], (n, m, head.shape[-1]))
+    pad = max(0, k - m)
+    if pad:
+        dist = jnp.concatenate([dist, jnp.full((n, pad), jnp.inf)], axis=1)
+        rel = jnp.concatenate([rel, jnp.zeros((n, pad, 2))], axis=1)
+        head = jnp.concatenate([head, jnp.zeros((n, pad, head.shape[-1]))], axis=1)
+
+    order = jnp.argsort(dist, axis=1)[:, :k]
+    mask = jnp.take_along_axis(dist, order, axis=1) <= radius
+    feat = jnp.concatenate(
+        [
+            jnp.take_along_axis(rel, order[..., None], axis=1),
+            jnp.take_along_axis(head, order[..., None], axis=1),
+        ],
+        axis=-1,
+    )
+    return feat * mask[..., None], mask
+
+
+def observe(state, cfg):
+    """return: (N, obs_dim). Own state, then <= k predators, then <= k prey."""
+    n, n0, k = n_agents(cfg), cfg.n_pred, cfg.n_neighbors
+    head = heading(state.theta, cfg)
+    rel = delta(state.pos[:, None, :], state.pos[None, :, :], cfg)
+    dist = jnp.linalg.norm(rel, axis=-1)
+    dist = dist.at[jnp.diag_indices(n)].set(jnp.inf)  # never observe yourself
+
+    pred, _ = _nearest(rel[:, :n0], head[:n0], dist[:, :n0], k, perception(cfg))
+    prey, _ = _nearest(rel[:, n0:], head[n0:], dist[:, n0:], k, perception(cfg))
+    own = jnp.concatenate([state.pos, state.vel, head], axis=-1)
+    return jnp.concatenate([own, pred.reshape(n, -1), prey.reshape(n, -1)], axis=-1)

@@ -190,6 +190,86 @@ def test_dtypes_survive_reset_to_step():
         assert x.dtype == y.dtype and x.shape == y.shape
 
 
+def _blocks(obs, cfg):
+    """Flat observation -> (own, predator slots, prey slots)."""
+    h, k = pp.heading_dim(cfg), cfg.n_neighbors
+    own, rest = obs[..., : 4 + h], obs[..., 4 + h :]
+    rest = rest.reshape(*obs.shape[:-1], 2 * k, 2 + h)
+    return own, rest[..., :k, :], rest[..., k:, :]
+
+
+def _visible(slots):
+    return jnp.any(slots != 0.0, axis=-1)
+
+
+def test_obs_dim_is_54_with_unit_headings():
+    assert pp.obs_dim(CFG) == 54
+    assert pp.obs_dim(replace(CFG, heading_encoding="angle")) == 41
+
+
+def test_observe_shape():
+    obs = pp.observe(RESET(KEYS[0], CFG), CFG)
+    assert obs.shape == (pp.n_agents(CFG), pp.obs_dim(CFG))
+
+
+def test_predators_come_before_prey_for_a_prey_observer():
+    """Spec 1.6. The ordering is by species, not by ally/adversary."""
+    cfg = replace(CFG, n_pred=1, n_prey=2)
+    state = pp.State(
+        pos=jnp.array([[0.1, 0.0], [0.0, 0.0], [0.2, 0.0]]),  # pred, observer, prey
+        vel=jnp.zeros((3, 2)),
+        theta=jnp.zeros(3),
+        time=jnp.int32(0),
+    )
+    _, pred, prey = _blocks(pp.observe(state, cfg)[1], cfg)
+    assert jnp.allclose(pred[0, :2], jnp.array([0.1, 0.0]))
+    assert jnp.allclose(prey[0, :2], jnp.array([0.2, 0.0]))
+
+
+def test_never_observes_itself():
+    for k in KEYS[:20]:
+        obs = pp.observe(RESET(k, CFG), CFG)
+        _, pred, prey = _blocks(obs, CFG)
+        for slots in (pred, prey):
+            at_zero = jnp.all(slots[..., :2] == 0.0, axis=-1)
+            assert not bool(jnp.any(at_zero & _visible(slots)))
+
+
+def test_neighbours_are_nearest_first():
+    for k in KEYS[:20]:
+        _, pred, prey = _blocks(pp.observe(RESET(k, CFG), CFG), CFG)
+        for slots in (pred, prey):
+            d = jnp.linalg.norm(slots[..., :2], axis=-1)
+            d = jnp.where(_visible(slots), d, 1e6)  # finite: inf - inf is nan
+            assert jnp.all(jnp.diff(d, axis=-1) >= -1e-6)
+
+
+def test_perception_radius_masks_and_pads_with_zeros():
+    near = replace(CFG, perception_frac=0.02)
+    state = RESET(KEYS[0], CFG)
+    wide = _visible(_blocks(pp.observe(state, CFG), CFG)[2]).sum()
+    tight = _visible(_blocks(pp.observe(state, near), near)[2]).sum()
+    assert int(tight) < int(wide)
+    _, pred, prey = _blocks(pp.observe(state, near), near)
+    for slots in (pred, prey):
+        assert float(jnp.abs(slots[~_visible(slots)]).max()) == 0.0
+
+
+def test_topological_limit_caps_visible_neighbours():
+    """20 prey all inside R, but a prey may still only see n_neighbors of them."""
+    crowd = replace(CFG, n_prey=20)
+    _, pred, prey = _blocks(pp.observe(RESET(KEYS[0], crowd), crowd), crowd)
+    assert int(_visible(prey)[crowd.n_pred :].sum(-1).max()) == crowd.n_neighbors
+    assert int(_visible(pred).sum(-1).max()) == crowd.n_pred
+
+
+def test_short_block_masks_out_rather_than_wrapping():
+    """3 predators into 6 slots: the last 3 are zeros, not a repeat of the first."""
+    _, pred, _ = _blocks(pp.observe(RESET(KEYS[0], CFG), CFG), CFG)
+    assert int(_visible(pred).sum(-1).max()) <= CFG.n_pred
+    assert float(jnp.abs(pred[:, CFG.n_pred :]).max()) == 0.0
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):
