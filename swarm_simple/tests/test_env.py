@@ -270,6 +270,99 @@ def test_short_block_masks_out_rather_than_wrapping():
     assert float(jnp.abs(pred[:, CFG.n_pred :]).max()) == 0.0
 
 
+def _pair(cfg, gap):
+    """One predator and one prey `gap` metres apart, at rest."""
+    return pp.State(
+        pos=jnp.array([[0.0, 0.0], [gap, 0.0]]),
+        vel=jnp.zeros((2, 2)),
+        theta=jnp.zeros(2),
+        time=jnp.int32(0),
+    )
+
+
+ONE_V_ONE = replace(CFG, n_pred=1, n_prey=1)
+LAZY = jnp.array([[-1.0, 0.0], [-1.0, 0.0]])  # a_F = 0, a_R = 0, so no movement cost
+
+
+def test_contact_pays_plus_one_and_minus_one():
+    touching = CFG.radius_pred + CFG.radius_prey - 1e-3
+    r, info = pp.reward(_pair(ONE_V_ONE, touching), LAZY, ONE_V_ONE)
+    assert jnp.allclose(r, jnp.array([1.0, -1.0]))
+    assert jnp.allclose(info["survival"], jnp.array([1.0, -1.0]))
+    assert float(info["captures"]) == 1.0
+
+
+def test_separated_agents_score_zero():
+    apart = CFG.radius_pred + CFG.radius_prey + 1e-3
+    r, info = pp.reward(_pair(ONE_V_ONE, apart), LAZY, ONE_V_ONE)
+    assert jnp.allclose(r, 0.0)
+    assert float(info["captures"]) == 0.0
+
+
+def test_touching_exactly_is_not_a_capture():
+    """Same threshold as contact_force: contact scores, mere touching does not."""
+    exact = CFG.radius_pred + CFG.radius_prey
+    _, info = pp.reward(_pair(ONE_V_ONE, exact), LAZY, ONE_V_ONE)
+    assert float(info["captures"]) == 0.0
+
+
+def test_reward_is_paid_every_step_the_contact_persists():
+    """Spec 2: prey are not removed, so it is not once per capture event."""
+    state = _pair(ONE_V_ONE, CFG.radius_pred + CFG.radius_prey - 1e-3)
+    paid = []
+    for _ in range(5):
+        paid.append(float(pp.reward(state, LAZY, ONE_V_ONE)[0][0]))
+        state = state._replace(time=state.time + 1)
+    assert paid == [1.0] * 5
+
+
+def test_movement_cost_matches_spec_2():
+    n = pp.n_agents(CFG)
+    action = jnp.tile(jnp.array([[1.0, 1.0]]), (n, 1))  # a_F = max_acc, a_R = +max
+    _, info = pp.reward(pp.reset(KEYS[0], CFG), action, CFG)
+    want = -(CFG.cost_af * CFG.max_acc + CFG.cost_ar * CFG.max_ang_vel)
+    assert jnp.allclose(info["movement"], want)
+
+
+def test_doing_nothing_costs_nothing():
+    n = pp.n_agents(CFG)
+    _, info = pp.reward(pp.reset(KEYS[0], CFG), jnp.tile(LAZY[:1], (n, 1)), CFG)
+    assert jnp.allclose(info["movement"], 0.0)
+
+
+def test_one_predator_touching_two_prey_still_scores_once():
+    cfg = replace(CFG, n_pred=1, n_prey=2)
+    d = CFG.radius_pred + CFG.radius_prey - 1e-3
+    state = pp.State(
+        pos=jnp.array([[0.0, 0.0], [d, 0.0], [-d, 0.0]]),
+        vel=jnp.zeros((3, 2)),
+        theta=jnp.zeros(3),
+        time=jnp.int32(0),
+    )
+    r, info = pp.reward(state, jnp.tile(LAZY[:1], (3, 1)), cfg)
+    assert float(r[0]) == 1.0
+    assert float(info["captures"]) == 2.0  # both prey bleed
+
+
+def test_no_wall_penalty_on_a_torus():
+    for k in KEYS[:20]:
+        _, info = pp.reward(RESET(k, CFG), jnp.zeros((pp.n_agents(CFG), 2)), CFG)
+        assert float(jnp.abs(info["wall"]).max()) == 0.0
+
+
+def test_wall_penalty_fires_only_against_a_boundary():
+    walls = replace(CFG, boundary="walls", n_pred=1, n_prey=1)
+    half = walls.edge / 2
+    state = pp.State(
+        pos=jnp.array([[half, 0.0], [0.0, 0.0]]),  # first is jammed into the wall
+        vel=jnp.zeros((2, 2)),
+        theta=jnp.zeros(2),
+        time=jnp.int32(0),
+    )
+    _, info = pp.reward(state, LAZY, walls)
+    assert jnp.allclose(info["wall"], jnp.array([-walls.boundary_penalty, 0.0]))
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):

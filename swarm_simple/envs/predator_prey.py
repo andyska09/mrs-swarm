@@ -185,7 +185,7 @@ def heading(theta, cfg):
 
 
 def _nearest(rel, head, dist, k, radius):
-   """One species' neighbours -> k fixed slots, nearest first, zeroed beyond `radius`.
+    """One species' neighbours -> k fixed slots, nearest first, zeroed beyond `radius`.
 
     return: (features (n, k, 2 + heading_dim), mask (n, k)). If the species has
     fewer than k members the spare slots are padded at infinite distance.
@@ -222,3 +222,33 @@ def observe(state, cfg):
     prey, _ = _nearest(rel[:, n0:], head[n0:], dist[:, n0:], k, perception(cfg))
     own = jnp.concatenate([state.pos, state.vel, head], axis=-1)
     return jnp.concatenate([own, pred.reshape(n, -1), prey.reshape(n, -1)], axis=-1)
+
+
+def contacts(pos, cfg):
+    """(N, N) bool: discs that overlap. Capture IS contact,
+    """
+    r = radii(cfg)
+    dist = jnp.linalg.norm(delta(pos[:, None, :], pos[None, :, :], cfg), axis=-1)
+    return (dist < r[:, None] + r[None, :]) & ~jnp.eye(pos.shape[0], dtype=bool)
+
+
+def reward(state, action, cfg):
+    """-> (reward (N,), info) An agent touching several adversaries still scores once.
+    """
+    n0 = cfg.n_pred
+    cross = contacts(state.pos, cfg)[:n0, n0:]  # (n_pred, n_prey)
+    hunting = jnp.any(cross, axis=1).astype(jnp.float32)
+    hunted = jnp.any(cross, axis=0).astype(jnp.float32)
+    survival = cfg.catch_reward * jnp.concatenate([hunting, -hunted])
+
+    a_f, a_r = scale_action(action, cfg)
+    movement = -(cfg.cost_af * jnp.abs(a_f) + cfg.cost_ar * jnp.abs(a_r))
+    wall = -cfg.boundary_penalty * wall_force(state.pos, cfg)[1].astype(jnp.float32)
+
+    info = {
+        "survival": survival,
+        "movement": movement,
+        "wall": wall,
+        "captures": hunted.sum(),
+    }
+    return survival + movement + wall, info

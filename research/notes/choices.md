@@ -20,6 +20,7 @@ Rule, in three categories:
 | Choice | Value | Why |
 |---|---|---|
 | Speed limit | explicit clamp after integration | Table 1 gives one drag (2) and one max acc (1), so the drag equilibrium is `max_acc/drag = 0.5` — exactly the tabulated max speed, which is why appendix B never mentions enforcing it. But §4.5 needs 0.3, and drag cannot produce that without per-species coefficients that contradict table 1. A clamp is the only consistent reading. Without it `speed_prey: 0.3` is a dead field and §4.5 silently re-runs the 1:1 baseline. |
+| Multiple simultaneous contacts | score once, not once per adversary | §3.4 says "the reward for a predator is `r = +1` if it catches prey" — a binary condition, not a count. So a predator touching three prey still gets +1, and a prey touched by two predators still gets −1. Each of those three prey does bleed its own −1. |
 | Spawn overlap | rejection-sample until every pair is ≥ `r_i + r_j` apart | Agents may touch but never start inside each other. Otherwise Hooke at stiffness 50 on mass 1 fires a large impulse on step 1, and it worsens as radii grow. Spec §7: minimum separation never stated. |
 
 
