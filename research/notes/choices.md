@@ -33,6 +33,7 @@ Rule, in three categories:
 | `init_speed_frac` | §7 | Spawn speed as a fraction of *that agent's own* max, random direction. A fraction rather than m/s so the 5:3 runs cannot spawn the slow species above its own cap. |
 | `actor_output` | §3.2, §7 | `tanh` on both dimensions, then a per-dimension affine rescale: `a_F = (x+1)/2 · max_acc`, `a_R = x · max_ang_vel`. The paper states only that outputs are "re-scaled to fit within specified ranges" and that the networks use ReLU — but ReLU on the output cannot produce a negative `a_R`, so a bounded output is forced without being named. |
 | `optimizer` | §7 | `adam`. Never stated; it is the MADDPG reference default, and table 2's learning rates only mean something relative to an optimizer. |
+| where the action enters the critic | §3.2, §7 | **Not** a config field: concatenated with the observation at the input layer, as in the MADDPG reference. It is a code path, not a number, and nothing in the paper suggests varying it. One line to make it a knob if an ablation ever needs one. |
 | `learning_starts` | §4 | Buffer warm-up, never stated. Counted in **env steps, not transitions** — each step inserts `n_prey` prey rows but only `n_pred` predator rows, so a transition threshold would silently start the two species learning at different times. |
 
 ## Config fields — the paper fixes the value, we keep the knob
