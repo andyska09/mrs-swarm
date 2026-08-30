@@ -35,11 +35,13 @@ Edit only the named file. Do not run tests. Stop after the edit, summarize it, a
 
 ## What this repository is
 
-A research workspace for a thesis on multi-robot / swarm RL. Our own code lives
-in `swarm/`; `research/` holds notes, papers, and two vendored reference
-codebases we learn from but do not edit.
+A research workspace for multi-robot / swarm RL. Our own code lives
+in `swarm_simple/` (`swarm/` is its abandoned predecessor); `research/` holds
+notes, papers, and two vendored reference codebases we learn from but do not
+edit.
 
-Project goals ([research/notes/goals.md](research/notes/goals.md), written in Czech):
+Project goals ([research/notes/goals.local.md](research/notes/goals.local.md),
+written in Czech — gitignored, so a fresh clone does not have it):
 
 1. Replicate *"Predator–prey survival pressure is sufficient to evolve swarming
    behaviors"* (Li, Li & Zhao 2023, New J. Phys. 25 092001 — in `research/papers/`).
@@ -52,33 +54,7 @@ Project goals ([research/notes/goals.md](research/notes/goals.md), written in Cz
 4. Push the paper further: add attention, a 3D environment, and/or more
    sophisticated dynamics.
 
-## swarm_simple/ — the rewrite, and the only code being worked on
-
-Ground-up reimplementation, CleanRL style. `swarm/` below is the old buggy
-version, kept for reference only — do not carry its design over.
-
-The two references, in this order:
-[research/notes/li2023_spec.md](research/notes/li2023_spec.md) is the paper side
-only; [research/notes/choices.md](research/notes/choices.md) is every decision
-the paper does not make for us, and what we hardcode where it does.
-
-```bash
-conda run -n mrs-swarm --no-capture-output python -m swarm_simple.run.train configs/flocking.json --seeds 0 1 2
-conda run -n mrs-swarm --no-capture-output python -m swarm_simple.tests.test_env
-```
-
-```
-configs/      hand-written COMPLETE json. Missing and unknown keys are both errors.
-runs/         append-only pool, <timestamp>_<hash8>/ with config.json, meta.json, s<seed>/
-experiments/  a list of run ids and nothing else — a view over the pool
-```
-
-## swarm/ — the old implementation, reference only
-
-Plan: [research/notes/plan.md](research/notes/plan.md). Replicating Li 2023 is
-how the platform gets validated; the platform is the end.
-
-**Python environments. There are two, they are not compatible, never mix them.**
+## Python environments. There are two, they are not compatible, never mix them.
 
 | env | for | how |
 |---|---|---|
@@ -90,18 +66,90 @@ invocation goes through `conda run -n mrs-swarm --no-capture-output`, including
 one-off checks and test scripts.
 
 `mrs-swarm` is conda + python 3.11, CPU: jax/jaxlib 0.10.1, flax 0.12.7, optax
-0.2.8, matplotlib, imageio ([requirements.txt](requirements.txt),
-pins copied from PPO_example). Use `conda run`, not `source activate`. Run
-everything from the repo root as `-m swarm.…`.
+0.2.8, matplotlib, imageio ([requirements.txt](requirements.txt), pins copied
+from PPO_example). Use `conda run`, not `source activate`. Run everything from
+the repo root as `-m swarm_simple.…`.
+
+## swarm_simple/ — the rewrite, and the only code being worked on
+
+Ground-up reimplementation, CleanRL style. `swarm/` below is the old buggy
+version, kept for reference only — do not carry its design over.
+
+Three references, in this order:
+[li2023_spec.md](research/notes/li2023_spec.md) is the paper side only;
+[choices.md](research/notes/choices.md) is every decision the paper does not make
+for us, and what we hardcode where it does;
+[replication_gap_suspects.md](research/notes/replication_gap_suspects.md) is the
+forensic audit of why `swarm/` never produced swarming — what not to repeat.
 
 ```bash
-conda run -n mrs-swarm --no-capture-output python -m swarm.tests.test_smoke        # THE GATE, ~30 s
-conda run -n mrs-swarm --no-capture-output python -m swarm.tests.test_smoke --env  # env gates only, ~8 s
-conda run -n mrs-swarm --no-capture-output python -m swarm.run.train --preset flocking --exp exp_flocking
-conda run -n mrs-swarm --no-capture-output python -m swarm.run.eval runs/exp_flocking/flocking/s0 --preset eval50 --gif
-conda run -n mrs-swarm --no-capture-output python -m swarm.run.render --compare runs/exp_flocking/flocking/s0 --trail 100
-conda run -n mrs-swarm --no-capture-output python -m swarm.run.aggregate exp_npredators
+conda run -n mrs-swarm --no-capture-output python -m swarm_simple.run.train configs/flocking.json --seeds 0 1 2
 ```
+
+Tests: **no pytest, and no aggregate gate yet.** Each module is its own `__main__`
+runner and is invoked on its own; there is nothing here that plays the role
+`swarm/tests/test_smoke.py` plays for the old tree.
+
+```bash
+conda run -n mrs-swarm --no-capture-output python -m swarm_simple.tests.test_env      # ~420 lines, the big one
+conda run -n mrs-swarm --no-capture-output python -m swarm_simple.tests.test_metrics
+conda run -n mrs-swarm --no-capture-output python -m swarm_simple.tests.test_networks
+conda run -n mrs-swarm --no-capture-output python -m swarm_simple.tests.test_buffer
+conda run -n mrs-swarm --no-capture-output python -m swarm_simple.tests.test_maddpg   # runs tiny trainings, slowest
+```
+
+```
+swarm_simple/
+├── config.py                the ONLY schema: frozen dataclasses + load/hash
+├── envs/predator_prey.py    state, step, observe, reward, rollout — module of functions
+├── envs/metrics.py          DoS / DoA, eq 2 and 3
+├── algo/networks.py         Actor / Critic, flax
+├── algo/buffer.py           flat replay buffer, one per species
+├── algo/maddpg.py           make_train(cfg) -> train(key); the whole loop
+└── run/train.py             the only entry point. eval / plot / render not written yet
+```
+
+How a run is put together — the parts that are not obvious from any single file:
+
+- **One XLA program, two nested scans.** `train(key)` is `lax.scan` over episodes,
+  each of which is `lax.scan` over `episode_len` env steps. Networks, optimizer
+  state, both replay buffers, env state and RNG all live in one `Carry`. Seeds are
+  `vmap`ped over `make_train(cfg)` in [train.py:88](swarm_simple/run/train.py#L88).
+- **One environment, one gradient step per species per env step.** No vectorised
+  envs, no update-every-k.
+- **The critic is decentralised: `Q(o_i, a_i)`.** It is called MADDPG but there is
+  no centralised critic. Deliberate, per the spec; the single most surprising fact
+  in the tree.
+- **No terminals.** Targets are `r + γQ'` unconditionally — episodes are
+  fixed-length and a capture does not end one.
+- **One buffer per species, conspecific experience merged.** `learning_starts`
+  counts env steps, not transitions, because the two species insert at different
+  rates.
+- **`cfg` is a frozen dataclass passed to jit as a static argument.** Anything that
+  changes a shape or takes a Python `if` (`n_pred`, `n_prey`, `boundary`,
+  `n_neighbors`, `heading_encoding`) recompiles when changed.
+- **Agents are one packed array, predators first**: `pos[:n_pred]` / `pos[n_pred:]`,
+  and the same slicing on obs, actions and rewards.
+- Actions are `(N, 2)` in `[-1, 1]`; `predator_prey.scale_action` owns the rescale
+  into physical `(a_F, a_R)`, so the ranges live in exactly one place.
+- `metrics.dos/doa` return `nan` below two conspecifics — that is why `n_pred: 0`
+  is a valid config and used as a control.
+- Adding a hyperparameter means editing a dataclass in `config.py`, not just the
+  JSON: missing **and** unknown keys are both `SystemExit`.
+
+```
+configs/      hand-written COMPLETE json. Missing and unknown keys are both errors.
+runs/         append-only pool, <timestamp>_<hash8>/ with config.json, meta.json, s<seed>/
+experiments/  a list of run ids and nothing else — a view over the pool. Empty so far.
+```
+
+`runs/` is gitignored; `results/<exp>.md` is tracked.
+
+## swarm/ — the old implementation, reference only
+
+Plan: [plan.md](research/notes/plan.md). Replicating Li 2023 is how the platform
+gets validated; the platform is the end. `results/*.md` are **this** tree's
+results, not `swarm_simple`'s — read them as the record of the failed attempt.
 
 ```
 swarm/
@@ -119,32 +167,13 @@ swarm/
 └── tests/test_smoke.py
 ```
 
-Using the environments:
-
-- `swarm/envs/predator_prey.py` is a **module of functions**, not a gymnax class.
-  `reset(key, params)`, `step(state, action, params)` (no key — deterministic),
-  `rollout(key, params, policy)`. Agents are one packed array, predators first:
-  `pos[:n_pred]` / `pos[n_pred:]`. Actions are `(N, 2)` in `[-1, 1]`; the env
-  scales them (a_F is forward-only).
-- `EnvParams` fields that change array shapes or take a Python `if`
-  (`n_pred`, `n_prey`, `boundary`, `motion_mode`, `n_neighbors`, `episode_len`)
-  are `pytree_node=False` — pass `params` as a **static** argnum when jitting,
-  and changing one recompiles.
-- `get_obs` returns `{self, neighbors, mask}`, **allies first**; `flatten_obs`
-  produces the paper's 54-dim MLP input. An attention encoder is a second reader
-  of the same structured obs, not a rewrite.
-- Values are chosen in `PRESETS` (`envs/predator_prey.py` for physics,
-  `algo/config.py` for training) and nowhere else. `run/` only names a preset.
-- `runs/` is gitignored; `results/<exp>.md` is tracked. `train.py` refuses a
-  non-empty leaf without `--overwrite`, and is deterministic in (preset, seed).
-- `scripted_predator=True` (paper 4.4, the swirling runs) replaces the predator
-  actor with the rule in `envs/scripted.py`; only prey learn.
+```bash
+conda run -n mrs-swarm --no-capture-output python -m swarm.tests.test_smoke   # THE GATE for this tree, ~30 s
+```
 
 Deviations from the paper, all deliberate, all recorded at the top of
 `predator_prey.py`: agent radii (0.06 / 0.04) and initial velocity are unstated
 in the paper; observations use ally-first ordering and unit-vector headings.
-
-Smoke tests green before any change is called done.
 
 ## Layout and conventions
 
