@@ -28,7 +28,9 @@ class EnvConfig:
     max_ang_vel: float
     speed_pred: float
     speed_prey: float
-    perception_frac: float  # R / D; D is the max possible separation, from edge and boundary
+    perception_frac: (
+        float  # R / D; D is the max possible separation, from edge and boundary
+    )
 
     # Rewards
     catch_reward: float
@@ -65,7 +67,14 @@ class MADDPGConfig:
     expl_decay: float
 
     optimizer: str
-    learning_starts: int  # env steps, not transitions: the species insert at different rates
+    learning_starts: (
+        int  # env steps, not transitions: the species insert at different rates
+    )
+
+    scripted_predator: bool  # §4.4: predators follow a fixed rule, only prey learn
+
+    # My additions:
+    actor_reg: float  # weight on mean(z^2) in the actor loss
 
 
 TRAIN = {"maddpg": MADDPGConfig}

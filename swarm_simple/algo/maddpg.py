@@ -18,7 +18,7 @@ import jax.numpy as jnp
 import optax
 
 from swarm_simple.algo import buffer, networks
-from swarm_simple.envs import metrics
+from swarm_simple.envs import metrics, scripted
 from swarm_simple.envs import predator_prey as pp
 
 OPTIMIZER = {"adam": optax.adam, "sgd": optax.sgd}
@@ -68,17 +68,18 @@ def make_train(exp):
         )
 
     def act(sp, obs, key, eps, noise):
-        """mu(o) + N, or a uniform action with probability eps. Spec 3.5."""
+        """-> (action, logits) mu(o) + N, or a uniform action with probability eps"""
         k_noise, k_pick, k_uniform = jax.random.split(key, 3)
         n = obs.shape[0]
-        a = actor.apply(sp.actor, obs) + noise * jax.random.normal(k_noise, (n, d_a))
+        mu, z = actor.apply(sp.actor, obs)
+        a = mu + noise * jax.random.normal(k_noise, (n, d_a))
         uniform = jax.random.uniform(k_uniform, (n, d_a), minval=-1.0, maxval=1.0)
         explore = jax.random.bernoulli(k_pick, eps, (n, 1))
-        return jnp.clip(jnp.where(explore, uniform, a), -1.0, 1.0)
+        return jnp.clip(jnp.where(explore, uniform, a), -1.0, 1.0), z
 
     def learn(sp, key):
         obs, action, reward, next_obs = buffer.sample(sp.buf, key, tr.batch_size)
-        next_action = actor.apply(sp.actor_target, next_obs)
+        next_action, _ = actor.apply(sp.actor_target, next_obs)
         y = reward + tr.gamma * critic.apply(sp.critic_target, next_obs, next_action)
 
         def critic_loss(params):
@@ -89,9 +90,10 @@ def make_train(exp):
         upd, critic_opt = critic_tx.update(grad, sp.critic_opt)
         new_critic = optax.apply_updates(sp.critic, upd)
 
-        # Algorithm 1 updates the critic first, so the actor climbs the fresh one.
         def actor_loss(params):
-            return -critic.apply(new_critic, obs, actor.apply(params, obs)).mean()
+            a, z = actor.apply(params, obs)
+            reg = tr.actor_reg * (z**2).mean()
+            return -critic.apply(new_critic, obs, a).mean() + reg
 
         a_loss, grad = jax.value_and_grad(actor_loss)(sp.actor)
         upd, actor_opt = actor_tx.update(grad, sp.actor_opt)
@@ -119,8 +121,15 @@ def make_train(exp):
 
     def env_step(carry, _):
         key, k_pred, k_prey, k_lp, k_ly = jax.random.split(carry.key, 5)
-        a_pred = act(carry.pred, carry.obs[:n0], k_pred, carry.eps, carry.noise)
-        a_prey = act(carry.prey, carry.obs[n0:], k_prey, carry.eps, carry.noise)
+        if tr.scripted_predator:
+            a_pred, z_pred = scripted.predator(carry.state, env_cfg), jnp.zeros(
+                (n0, d_a)
+            )
+        else:
+            a_pred, z_pred = act(
+                carry.pred, carry.obs[:n0], k_pred, carry.eps, carry.noise
+            )
+        a_prey, z_prey = act(carry.prey, carry.obs[n0:], k_prey, carry.eps, carry.noise)
         action = jnp.concatenate([a_pred, a_prey])
 
         state = pp.step(carry.state, action, env_cfg)
@@ -140,7 +149,9 @@ def make_train(exp):
 
         warm = carry.step >= tr.learning_starts
         pred, p_aux = jax.lax.cond(
-            warm & (n0 > 0), lambda: learn(pred, k_lp), lambda: (pred, NO_UPDATE)
+            warm & (n0 > 0) & (not tr.scripted_predator),
+            lambda: learn(pred, k_lp),
+            lambda: (pred, NO_UPDATE),
         )
         prey, y_aux = jax.lax.cond(
             warm, lambda: learn(prey, k_ly), lambda: (prey, NO_UPDATE)
@@ -165,6 +176,8 @@ def make_train(exp):
             "pred_ar": jnp.abs(a_r[:n0]).mean() if n0 else nan,
             "prey_af": a_f[n0:].mean(),
             "prey_ar": jnp.abs(a_r[n0:]).mean(),
+            "pred_z": jnp.abs(z_pred).mean() if n0 else nan,
+            "prey_z": jnp.abs(z_prey).mean(),
             "pred_q": p_aux["q"],
             "prey_q": y_aux["q"],
             "pred_critic_loss": p_aux["critic_loss"],
@@ -180,7 +193,7 @@ def make_train(exp):
         )
         return carry, out
 
-    # Episodic sums, not means: the paper plots return per agent per episode.
+    # Episodic sums: the paper plots return per agent per episode.
     SUMMED = ("pred_reward", "prey_reward", "prey_survival", "prey_movement")
 
     def episode(carry, _):
