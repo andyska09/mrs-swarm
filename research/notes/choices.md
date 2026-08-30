@@ -35,6 +35,7 @@ Rule, in three categories:
 | `optimizer` | §7 | `adam`. Never stated; it is the MADDPG reference default, and table 2's learning rates only mean something relative to an optimizer. |
 | where the action enters the critic | §3.2, §7 | **Not** a config field: concatenated with the observation at the input layer, as in the MADDPG reference. It is a code path, not a number, and nothing in the paper suggests varying it. One line to make it a knob if an ablation ever needs one. |
 | `learning_starts` | §4 | Buffer warm-up, never stated. Counted in **env steps, not transitions** — each step inserts `n_prey` prey rows but only `n_pred` predator rows, so a transition threshold would silently start the two species learning at different times. |
+| `actor_reg` | §3.3, §7 | `mean(z²)` on the actor's pre-tanh output, added to the actor loss at `1e-3`. Forced by `actor_output = tanh`, above: `−Q(o, μ(o))` has no term in `z`, so nothing stops the actor drifting into the tail where `1 − tanh²(z) → 0` and the gradient dies. Measured at `0.0`: mean \|z\| 5.5, 76% of actions past 0.99, prey pinned at max turn rate for the whole run. At `1e-3`: \|z\| 0.61. Reference MADDPG (`openai/maddpg`, `p_train`) carries the same term at the same weight, though its actor is not tanh-squashed, so the precedent is structural, not exact. |
 
 ## Config fields — the paper fixes the value, we keep the knob
 
