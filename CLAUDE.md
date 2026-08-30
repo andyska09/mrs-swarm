@@ -36,9 +36,11 @@ Edit only the named file. Do not run tests. Stop after the edit, summarize it, a
 ## What this repository is
 
 A research workspace for multi-robot / swarm RL. Our own code lives
-in `swarm_simple/` (`swarm/` is its abandoned predecessor); `research/` holds
-notes, papers, and two vendored reference codebases we learn from but do not
-edit.
+in `swarm_simple/`; `research/` holds notes, papers, and two vendored reference
+codebases we learn from but do not edit.
+
+Plan: [plan.md](research/notes/plan.md). Replicating Li 2023 is how the platform
+gets validated; the platform is the end.
 
 Project goals ([research/notes/goals.local.md](research/notes/goals.local.md),
 written in Czech — gitignored, so a fresh clone does not have it):
@@ -58,7 +60,7 @@ written in Czech — gitignored, so a fresh clone does not have it):
 
 | env | for | how |
 |---|---|---|
-| `mrs-swarm` | `swarm_simple/`, `swarm/`, `research/code_sources/PPO_example` | `conda run -n mrs-swarm --no-capture-output python ...` |
+| `mrs-swarm` | `swarm_simple/`, `research/code_sources/PPO_example` | `conda run -n mrs-swarm --no-capture-output python ...` |
 | — | `research/code_sources/quad-swarm-rl` | separate PyTorch stack, not created yet |
 
 **NEVER run bare `python` or `python3`.** The system interpreter has no jax. Every
@@ -70,25 +72,30 @@ one-off checks and test scripts.
 from PPO_example). Use `conda run`, not `source activate`. Run everything from
 the repo root as `-m swarm_simple.…`.
 
-## swarm_simple/ — the rewrite, and the only code being worked on
+## swarm_simple/ — the only code
 
-Ground-up reimplementation, CleanRL style. `swarm/` below is the old buggy
-version, kept for reference only — do not carry its design over.
+Ground-up reimplementation, CleanRL style. It replaced an earlier tree, `swarm/`,
+deleted in `99daf31` — recover it from git history if a detail is ever needed.
 
 Three references, in this order:
 [li2023_spec.md](research/notes/li2023_spec.md) is the paper side only;
 [choices.md](research/notes/choices.md) is every decision the paper does not make
 for us, and what we hardcode where it does;
 [replication_gap_suspects.md](research/notes/replication_gap_suspects.md) is the
-forensic audit of why `swarm/` never produced swarming — what not to repeat.
+forensic audit of why the old tree never produced swarming — what not to repeat.
+
+Deviations from the paper, all deliberate: agent radii (0.06 / 0.04) and initial
+velocity are unstated in the paper; observations use ally-first ordering and
+unit-vector headings.
 
 ```bash
 conda run -n mrs-swarm --no-capture-output python -m swarm_simple.run.train configs/flocking.json --seeds 0 1 2
+conda run -n mrs-swarm --no-capture-output python -m swarm_simple.run.replay eval_configs/flock50.json
+conda run -n mrs-swarm --no-capture-output python -m swarm_simple.run.render renders/flock50
 ```
 
-Tests: **no pytest, and no aggregate gate yet.** Each module is its own `__main__`
-runner and is invoked on its own; there is nothing here that plays the role
-`swarm/tests/test_smoke.py` plays for the old tree.
+Tests: **no pytest, and no aggregate gate.** Each module is its own `__main__`
+runner and is invoked on its own; nothing runs them all.
 
 ```bash
 conda run -n mrs-swarm --no-capture-output python -m swarm_simple.tests.test_env      # ~420 lines, the big one
@@ -106,7 +113,9 @@ swarm_simple/
 ├── algo/networks.py         Actor / Critic, flax
 ├── algo/buffer.py           flat replay buffer, one per species
 ├── algo/maddpg.py           make_train(cfg) -> train(key); the whole loop
-└── run/train.py             the only entry point. eval / plot / render not written yet
+├── run/train.py             config -> runs/<timestamp>_<hash8>/
+├── run/replay.py            eval config -> renders/<name>/{traj.npz, config.json}
+└── run/render.py            renders/<name>/ -> out.gif. plot / aggregate not written yet
 ```
 
 How a run is put together — the parts that are not obvious from any single file:
@@ -137,49 +146,39 @@ How a run is put together — the parts that are not obvious from any single fil
 - Adding a hyperparameter means editing a dataclass in `config.py`, not just the
   JSON: missing **and** unknown keys are both `SystemExit`.
 
+Replay and rendering are two commands, and an eval config is a **simulation**, not
+a picture: it carries a complete `env` of its own and says nothing about drawing.
+
+- **An eval env owes the training env nothing but the observation width.** The actor
+  is shared within a species and sees a fixed `(n, d_o)`, so a policy trained at
+  3v10 replays at 3v50 in a bigger arena with different physics. Only `n_neighbors`
+  and `heading_encoding` are frozen by the checkpoint — `replay.py` checks `obs_dim`
+  against the run's `config.json` and exits if they disagree.
+- **The model block is never written in an eval config**; each species resolves it
+  from its own `run`'s `config.json`.
+- Each species picks a `mode`: `learned | scripted | random | untrained`. `learned`
+  and `untrained` need a `run` + `seed`; `scripted` is predators only.
+- **Replay runs bare `mu(o)`** — `eps` and `noise` are a learning device, not the
+  policy.
+- `render.py` never simulates: it reads `traj.npz` and draws. Playback flags
+  (`--fps`, `--out`) live on the CLI, never in a config.
+
 ```
-configs/      hand-written COMPLETE json. Missing and unknown keys are both errors.
-runs/         append-only pool, <timestamp>_<hash8>/ with config.json, meta.json, s<seed>/
-experiments/  a list of run ids and nothing else — a view over the pool. Empty so far.
-```
-
-`runs/` is gitignored; `results/<exp>.md` is tracked.
-
-## swarm/ — the old implementation, reference only
-
-Plan: [plan.md](research/notes/plan.md). Replicating Li 2023 is how the platform
-gets validated; the platform is the end. `results/*.md` are **this** tree's
-results, not `swarm_simple`'s — read them as the record of the failed attempt.
-
-```
-swarm/
-├── envs/
-│   ├── predator_prey.py  env + reward + PRESETS + rollout. NOT a gymnax env: everything is per-agent
-│   ├── dynamics.py       step_motion — the extension seam for 3D / drone dynamics
-│   ├── metrics.py        DoS / DoA, pure functions of bare arrays
-│   └── scripted.py       the paper's §4.4 predator rule; the gate-2 baseline
-├── algo/
-│   ├── ddpg.py           actor, critic, replay buffer, update. Species-agnostic
-│   ├── train_swarm.py    two-species coevolution loop; seeds are vmapped
-│   └── config.py         every hyperparameter, with its reason, + PRESETS
-├── run/                  train.py, eval.py, plot.py, render.py, aggregate.py
-│                         → runs/<exp>/<preset>/s<seed>/, results/<exp>.md
-└── tests/test_smoke.py
+configs/       training json, hand-written and COMPLETE. Missing and unknown keys are both errors.
+eval_configs/  the same rules, for a replay: env_seed, pred, prey, env
+runs/          append-only pool, <timestamp>_<hash8>/ with config.json, meta.json, s<seed>/
+renders/       <name>/{traj.npz, config.json, out.gif}, one dir per eval config
 ```
 
-```bash
-conda run -n mrs-swarm --no-capture-output python -m swarm.tests.test_smoke   # THE GATE for this tree, ~30 s
-```
-
-Deviations from the paper, all deliberate, all recorded at the top of
-`predator_prey.py`: agent radii (0.06 / 0.04) and initial velocity are unstated
-in the paper; observations use ally-first ordering and unit-vector headings.
+`runs/` and `renders/` are gitignored; both config dirs and
+`research/notes/experiments/<exp>.md` are tracked.
 
 ## Layout and conventions
 
 ```
 research/
 ├── notes/          working notes (Czech is fine here)
+│   └── experiments/  one tracked <exp>.md per experiment; results of the old tree
 ├── papers/         PDFs + .md transcripts — GITIGNORED except bibliography_index.md
 └── code_sources/   vendored reference code, NOT our implementation
     ├── PPO_example/     JAX/gymnax single-agent PPO (supervisor's teaching repo)
