@@ -20,3 +20,4 @@ skills/
 skills-lock.json
 __pycache__/
 *.pyc
+renders/

@@ -80,6 +80,16 @@ class MADDPGConfig:
 TRAIN = {"maddpg": MADDPGConfig}
 
 
+MODES = ("learned", "scripted", "random", "untrained")
+
+
+@dataclass(frozen=True)
+class SpeciesConfig:
+    mode: str
+    run: str  # "" for modes that read no run
+    seed: int
+
+
 @dataclass(frozen=True)
 class Config:
     name: str
@@ -128,6 +138,55 @@ def as_dict(cfg):
         "env": asdict(cfg.env),
         "model": asdict(cfg.model),
         "train": asdict(cfg.train),
+    }
+
+
+@dataclass(frozen=True)
+class EvalConfig:
+    name: str
+    env_seed: int
+    pred: SpeciesConfig
+    prey: SpeciesConfig
+    env: EnvConfig
+
+
+def _check_species(sp, species, path):
+    if sp.mode not in MODES:
+        raise SystemExit(f"{path}: {species}.mode {sp.mode!r}. Known: {list(MODES)}")
+    if sp.mode == "scripted" and species != "pred":
+        raise SystemExit(f"{path}: scripted is for predators only")
+    if sp.mode in ("learned", "untrained") and not sp.run:
+        raise SystemExit(f"{path}: {species}.mode {sp.mode!r} needs a run")
+
+
+def load_eval(path):
+    path = Path(path)
+    blob = json.loads(path.read_text())
+    want = {"name", "env_seed", "pred", "prey", "env"}
+    missing, unknown = want - set(blob), set(blob) - want
+    if missing or unknown:
+        raise SystemExit(
+            f"{path}: missing {sorted(missing)}, unknown {sorted(unknown)}"
+        )
+    cfg = EvalConfig(
+        name=blob["name"],
+        env_seed=blob["env_seed"],
+        pred=_build(SpeciesConfig, blob["pred"], "pred"),
+        prey=_build(SpeciesConfig, blob["prey"], "prey"),
+        env=_build(EnvConfig, blob["env"], "env"),
+    )
+    _check_species(cfg.pred, "pred", path)
+    _check_species(cfg.prey, "prey", path)
+    return cfg
+
+
+def eval_as_dict(cfg):
+    return {
+        "name": cfg.name,
+        "env_seed": cfg.env_seed,
+        "pred": asdict(cfg.pred),
+        "prey": asdict(cfg.prey),
+        "env": asdict(cfg.env),
     }
 
 
