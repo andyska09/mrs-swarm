@@ -149,6 +149,8 @@ def make_train(exp):
         dos, doa = species_metrics(state.pos[n0:], state.theta[n0:])
         pred_dos, pred_doa = species_metrics(state.pos[:n0], state.theta[:n0])
         nan = jnp.float32(jnp.nan)
+        # Physical units: a_F in [0, max_acc], |a_R| in [0, max_ang_vel].
+        a_f, a_r = pp.scale_action(action, env_cfg)
         out = {
             "dos": dos,
             "doa": doa,
@@ -159,6 +161,10 @@ def make_train(exp):
             "prey_reward": reward[n0:].mean(),
             "prey_survival": info["survival"][n0:].mean(),
             "prey_movement": info["movement"][n0:].mean(),
+            "pred_af": a_f[:n0].mean() if n0 else nan,
+            "pred_ar": jnp.abs(a_r[:n0]).mean() if n0 else nan,
+            "prey_af": a_f[n0:].mean(),
+            "prey_ar": jnp.abs(a_r[n0:]).mean(),
             "pred_q": p_aux["q"],
             "prey_q": y_aux["q"],
             "pred_critic_loss": p_aux["critic_loss"],
