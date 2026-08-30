@@ -21,10 +21,13 @@ class Actor(nn.Module):
 
     @nn.compact
     def __call__(self, obs):
+        """-> (action, pre-squash logits). Deep in the tanh tail the gradient dies,
+        so the actor loss penalises the logits to keep it out of there."""
         x = obs
         for width in self.hidden:
             x = ACTIVATION[self.activation](nn.Dense(width)(x))
-        return SQUASH[self.squash](nn.Dense(self.act_dim)(x))
+        z = nn.Dense(self.act_dim)(x)
+        return SQUASH[self.squash](z), z
 
 
 class Critic(nn.Module):
