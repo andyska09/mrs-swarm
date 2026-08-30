@@ -46,8 +46,8 @@ def test_critic_takes_the_action_at_the_input_layer():
 
 def test_actor_output_shape_and_range():
     a_params, _ = _init()
-    a = ACTOR.apply(a_params, _obs(32))
-    assert a.shape == (32, D_A)
+    a, z = ACTOR.apply(a_params, _obs(32))
+    assert a.shape == z.shape == (32, D_A)
     assert jnp.all(jnp.abs(a) <= 1.0)
 
 
@@ -61,21 +61,21 @@ def test_networks_broadcast_over_leading_axes():
     """The training loop applies one actor to (n_envs, n_agents, d_o)."""
     a_params, c_params = _init()
     obs = jax.random.normal(KEY, (4, 10, D_O))
-    assert ACTOR.apply(a_params, obs).shape == (4, 10, D_A)
+    assert ACTOR.apply(a_params, obs)[0].shape == (4, 10, D_A)
     assert CRITIC.apply(c_params, obs, jnp.zeros((4, 10, D_A))).shape == (4, 10)
 
 
 def test_actor_is_deterministic_and_not_collapsed():
     a_params, _ = _init()
     obs = _obs(64)
-    assert jnp.array_equal(ACTOR.apply(a_params, obs), ACTOR.apply(a_params, obs))
-    assert float(ACTOR.apply(a_params, obs).std()) > 1e-4
+    assert jnp.array_equal(ACTOR.apply(a_params, obs)[0], ACTOR.apply(a_params, obs)[0])
+    assert float(ACTOR.apply(a_params, obs)[0].std()) > 1e-4
 
 
 def test_actor_output_feeds_scale_action_directly():
     """The net emits [-1, 1]; the env owns the rescale into (a_F, a_R)."""
     a_params, _ = _init()
-    a_f, a_r = pp.scale_action(ACTOR.apply(a_params, _obs(64)), CFG.env)
+    a_f, a_r = pp.scale_action(ACTOR.apply(a_params, _obs(64))[0], CFG.env)
     assert jnp.all((a_f >= 0.0) & (a_f <= CFG.env.max_acc))
     assert jnp.all(jnp.abs(a_r) <= CFG.env.max_ang_vel)
 
