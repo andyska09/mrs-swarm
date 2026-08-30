@@ -1,5 +1,5 @@
 {
-  "name": "flocking",
+  "name": "flocking_reg",
   "algo": "maddpg",
 
   "env": {
@@ -57,6 +57,6 @@
 
     "scripted_predator": false,
 
-    "actor_reg": 0.0
+    "actor_reg": 0.001
   }
 }
