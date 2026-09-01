@@ -10,8 +10,11 @@ goals.local.md
 
 __pycache__/
 *.pyc
+
+# experiment artifacts
 runs/
 logs/
+evals/
 
 skills/
 .claude/
