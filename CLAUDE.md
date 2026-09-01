@@ -39,8 +39,7 @@ A research workspace for multi-robot / swarm RL. Our own code lives
 in `swarm_simple/`; `research/` holds notes, papers, and two vendored reference
 codebases we learn from but do not edit.
 
-Plan: [plan.md](research/notes/plan.md). Replicating Li 2023 is how the platform
-gets validated; the platform is the end.
+Replicating Li 2023 is how the platform gets validated; the platform is the end.
 
 Project goals ([research/notes/goals.local.md](research/notes/goals.local.md),
 written in Czech — gitignored, so a fresh clone does not have it):
@@ -77,28 +76,35 @@ the repo root as `-m swarm_simple.…`.
 Ground-up reimplementation, CleanRL style. It replaced an earlier tree, `swarm/`,
 deleted in `99daf31` — recover it from git history if a detail is ever needed.
 
-Three references, in this order:
+Four references, in this order:
 [li2023_spec.md](research/notes/li2023_spec.md) is the paper side only;
 [choices.md](research/notes/choices.md) is every decision the paper does not make
 for us, and what we hardcode where it does;
-[replication_gap_suspects.md](research/notes/replication_gap_suspects.md) is the
-forensic audit of why the old tree never produced swarming — what not to repeat.
+[exp_sweeps.md](research/notes/experiments/exp_sweeps.md) is every run and eval
+we have done and what each one measured;
+[exp_learner_sweep.md](research/notes/experiments/exp_learner_sweep.md) is the
+current state of the replication — read it before touching flocking again.
+[inducing_flocking.md](research/notes/inducing_flocking.md) is the ranked list of
+what to try next.
 
 Deviations from the paper, all deliberate: agent radii (0.06 / 0.04) and initial
 velocity are unstated in the paper; observations use ally-first ordering and
-unit-vector headings.
+unit-vector headings; `pred_acc_scale` / `pred_turn_scale` / `max_speed_*` are
+knobs the paper does not have (1.0 is the paper); `spawn: lattice` exists only
+for the formation test.
 
 ```bash
 conda run -n mrs-swarm --no-capture-output python -m swarm_simple.run.train configs/flocking.json --seeds 0 1 2
 conda run -n mrs-swarm --no-capture-output python -m swarm_simple.run.replay eval_configs/flock50.json
 conda run -n mrs-swarm --no-capture-output python -m swarm_simple.run.render renders/flock50
+conda run -n mrs-swarm --no-capture-output python -m swarm_simple.run.eval eval_configs/flock50.json --episodes 200
 ```
 
 Tests: **no pytest, and no aggregate gate.** Each module is its own `__main__`
 runner and is invoked on its own; nothing runs them all.
 
 ```bash
-conda run -n mrs-swarm --no-capture-output python -m swarm_simple.tests.test_env      # ~420 lines, the big one
+conda run -n mrs-swarm --no-capture-output python -m swarm_simple.tests.test_env      # ~450 lines, the big one
 conda run -n mrs-swarm --no-capture-output python -m swarm_simple.tests.test_metrics
 conda run -n mrs-swarm --no-capture-output python -m swarm_simple.tests.test_networks
 conda run -n mrs-swarm --no-capture-output python -m swarm_simple.tests.test_buffer
@@ -110,12 +116,14 @@ swarm_simple/
 ├── config.py                the ONLY schema: frozen dataclasses + load/hash
 ├── envs/predator_prey.py    state, step, observe, reward, rollout — module of functions
 ├── envs/metrics.py          DoS / DoA, eq 2 and 3
+├── envs/scripted.py         §4.4 predator rule: turn at nearest prey, full throttle
 ├── algo/networks.py         Actor / Critic, flax
 ├── algo/buffer.py           flat replay buffer, one per species
 ├── algo/maddpg.py           make_train(cfg) -> train(key); the whole loop
 ├── run/train.py             config -> runs/<timestamp>_<hash8>/
 ├── run/replay.py            eval config -> renders/<name>/{traj.npz, config.json}
-└── run/render.py            renders/<name>/ -> out.gif. plot / aggregate not written yet
+├── run/eval.py              eval config x N episodes -> evals/<name>.json
+└── run/render.py            renders/<name>/ -> out.gif. no plot script yet
 ```
 
 How a run is put together — the parts that are not obvious from any single file:
@@ -123,9 +131,11 @@ How a run is put together — the parts that are not obvious from any single fil
 - **One XLA program, two nested scans.** `train(key)` is `lax.scan` over episodes,
   each of which is `lax.scan` over `episode_len` env steps. Networks, optimizer
   state, both replay buffers, env state and RNG all live in one `Carry`. Seeds are
-  `vmap`ped over `make_train(cfg)` in [train.py:88](swarm_simple/run/train.py#L88).
-- **One environment, one gradient step per species per env step.** No vectorised
-  envs, no update-every-k.
+  `vmap`ped over `make_train(cfg)` in [train.py:82](swarm_simple/run/train.py#L82).
+- **`n_envs` independent envs stepped together, still one gradient step per
+  species per env step.** Widening `n_envs` widens what goes into the buffer per
+  step (`rows()` flattens the env axis away — the buffer has no env axis), not
+  how often anyone learns. No update-every-k.
 - **The critic is decentralised: `Q(o_i, a_i)`.** It is called MADDPG but there is
   no centralised critic. Deliberate, per the spec; the single most surprising fact
   in the tree.
@@ -143,6 +153,15 @@ How a run is put together — the parts that are not obvious from any single fil
   into physical `(a_F, a_R)`, so the ranges live in exactly one place.
 - `metrics.dos/doa` return `nan` below two conspecifics — that is why `n_pred: 0`
   is a valid config and used as a control.
+- **`scripted_predator: true` swaps the learned predator for `envs/scripted.py`**
+  and skips its gradient step entirely; only the prey evolve. The same rule is
+  `mode: scripted` at replay time.
+- **The actor loss penalises the pre-squash logits (`actor_reg`).** Without it the
+  actor saturates deep in the tanh tail, the gradient dies and nothing learns —
+  this was the bug, not a hyperparameter preference.
+- **Training-logged `dos`/`doa` are episode means over the whole episode**, so
+  they average in the formation transient from a uniform spawn and understate the
+  flock. Judge flocking from `run.eval`'s `*_final_quarter`, not the training log.
 - Adding a hyperparameter means editing a dataclass in `config.py`, not just the
   JSON: missing **and** unknown keys are both `SystemExit`.
 
@@ -166,19 +185,21 @@ a picture: it carries a complete `env` of its own and says nothing about drawing
 ```
 configs/       training json, hand-written and COMPLETE. Missing and unknown keys are both errors.
 eval_configs/  the same rules, for a replay: env_seed, pred, prey, env
-runs/          append-only pool, <timestamp>_<hash8>/ with config.json, meta.json, s<seed>/
+runs/          append-only pool, <timestamp>_<hash8>/ with config.json, meta.json, s<seed>/{metrics.npz, params.pkl}
 renders/       <name>/{traj.npz, config.json, out.gif}, one dir per eval config
+evals/         <name>.json from run.eval: the eval config it came from + the numbers
 ```
 
-`runs/` and `renders/` are gitignored; both config dirs and
-`research/notes/experiments/<exp>.md` are tracked.
+`runs/` and `renders/` are gitignored. Both config dirs, `evals/` and
+`research/notes/experiments/<exp>.md` are tracked — `evals/` is the record of
+every measurement, so a result is not real until its JSON is committed.
 
 ## Layout and conventions
 
 ```
 research/
 ├── notes/          working notes (Czech is fine here)
-│   └── experiments/  one tracked <exp>.md per experiment; results of the old tree
+│   └── experiments/  one tracked <exp>.md per experiment
 ├── papers/         PDFs + .md transcripts — GITIGNORED except bibliography_index.md
 └── code_sources/   vendored reference code, NOT our implementation
     ├── PPO_example/     JAX/gymnax single-agent PPO (supervisor's teaching repo)
