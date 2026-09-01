@@ -1,0 +1,80 @@
+{
+  "config": {
+    "name": "handling_k05_s032_p3",
+    "env_seed": 10000,
+    "pred": {
+      "mode": "scripted",
+      "run": "",
+      "seed": 0
+    },
+    "prey": {
+      "mode": "learned",
+      "run": "runs/20260830-194629_2c723019",
+      "seed": 3
+    },
+    "env": {
+      "n_pred": 3,
+      "n_prey": 10,
+      "episode_len": 100,
+      "boundary": "torus",
+      "n_neighbors": 6,
+      "edge": 2.0,
+      "dt": 0.1,
+      "mass_pred": 1.0,
+      "mass_prey": 1.0,
+      "drag": 2.0,
+      "stiffness": 50.0,
+      "max_acc": 1.0,
+      "max_ang_vel": 0.5,
+      "pred_acc_scale": 1.0,
+      "pred_turn_scale": 1.0,
+      "speed_pred": 0.5,
+      "speed_prey": 0.5,
+      "perception_frac": 1.0,
+      "catch_reward": 1.0,
+      "cost_af": 0.01,
+      "cost_ar": 0.1,
+      "boundary_penalty": 0.1,
+      "radius_pred": 0.06,
+      "radius_prey": 0.04,
+      "heading_encoding": "unit",
+      "init_speed_frac": 1.0,
+      "spawn": "lattice",
+      "spawn_spacing": 0.32,
+      "handling_time": 5
+    }
+  },
+  "episodes": 500,
+  "captures_per_step": {
+    "mean": 0.07466000318527222,
+    "sd": 0.027138246223330498
+  },
+  "captures_per_step_per_prey": {
+    "mean": 0.007466000504791737,
+    "sd": 0.0027138248551636934
+  },
+  "prey_return": {
+    "mean": -3.5599160194396973,
+    "sd": 0.34141749143600464
+  },
+  "pred_return": {
+    "mean": -3.3151862621307373,
+    "sd": 0.9555697441101074
+  },
+  "dos": {
+    "mean": 0.20141948759555817,
+    "sd": 0.02141953818500042
+  },
+  "doa": {
+    "mean": 0.6824920177459717,
+    "sd": 0.0782204195857048
+  },
+  "dos_final_quarter": {
+    "mean": 0.2126806080341339,
+    "sd": 0.033059149980545044
+  },
+  "doa_final_quarter": {
+    "mean": 0.6815754771232605,
+    "sd": 0.11012343317270279
+  }
+}
