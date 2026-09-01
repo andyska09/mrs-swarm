@@ -75,7 +75,8 @@ def test_actor_is_deterministic_and_not_collapsed():
 def test_actor_output_feeds_scale_action_directly():
     """The net emits [-1, 1]; the env owns the rescale into (a_F, a_R)."""
     a_params, _ = _init()
-    a_f, a_r = pp.scale_action(ACTOR.apply(a_params, _obs(64))[0], CFG.env)
+    n = pp.n_agents(CFG.env)
+    a_f, a_r = pp.scale_action(ACTOR.apply(a_params, _obs(n))[0], CFG.env)
     assert jnp.all((a_f >= 0.0) & (a_f <= CFG.env.max_acc))
     assert jnp.all(jnp.abs(a_r) <= CFG.env.max_ang_vel)
 

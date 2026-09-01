@@ -107,6 +107,17 @@ def test_zero_predators_leaves_the_prey_alone():
     assert np.all(np.isfinite(m["dos"])) and np.all(np.isfinite(m["doa"]))
 
 
+def test_parallel_envs_keep_the_metric_shape():
+    """n_envs changes how much data a step collects, not the shape of anything."""
+    par = replace(SMALL, train=replace(SMALL.train, n_envs=8))
+    m, _ = _run(par)
+    one, _ = _run(SMALL)
+    for name, v in m.items():
+        assert v.shape == (par.train.episodes,), name
+        assert np.all(np.isfinite(v)), name
+    assert not np.allclose(m["dos"], one["dos"])
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):

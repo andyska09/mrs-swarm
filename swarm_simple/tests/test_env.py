@@ -99,23 +99,56 @@ def _rollout(cfg, action, steps, key=KEYS[0]):
 
 
 def test_action_scaling_matches_spec_1_3():
+    """The limits are per-agent, so scale_action takes the whole packed array."""
+    cfg = replace(CFG, n_pred=1, n_prey=2)
     a = jnp.array([[-1.0, -1.0], [0.0, 0.0], [1.0, 1.0]])
-    a_f, a_r = pp.scale_action(a, CFG)
-    assert jnp.allclose(a_f, jnp.array([0.0, 0.5, 1.0]) * CFG.max_acc)
-    assert jnp.allclose(a_r, jnp.array([-1.0, 0.0, 1.0]) * CFG.max_ang_vel)
+    a_f, a_r = pp.scale_action(a, cfg)
+    assert jnp.allclose(a_f, jnp.array([0.0, 0.5, 1.0]) * cfg.max_acc)
+    assert jnp.allclose(a_r, jnp.array([-1.0, 0.0, 1.0]) * cfg.max_ang_vel)
 
 
 def test_action_is_clipped():
-    a_f, a_r = pp.scale_action(jnp.array([[9.0, -9.0]]), CFG)
-    assert float(a_f[0]) == CFG.max_acc and float(a_r[0]) == -CFG.max_ang_vel
+    cfg = replace(CFG, n_pred=0, n_prey=1)
+    a_f, a_r = pp.scale_action(jnp.array([[9.0, -9.0]]), cfg)
+    assert float(a_f[0]) == cfg.max_acc and float(a_r[0]) == -cfg.max_ang_vel
 
 
-def test_position_uses_the_pre_update_velocity():
-    """Spec 1.2: x(t+1) = x(t) + v(t)dt. From rest, one step cannot move anything."""
-    rest = pp.reset(KEYS[0], replace(CFG, init_speed_frac=0.0))
-    moved = STEP(rest, jnp.ones((pp.n_agents(CFG), 2)), replace(CFG, init_speed_frac=0.0))
-    assert jnp.allclose(moved.pos, rest.pos)
-    assert float(jnp.linalg.norm(moved.vel, axis=-1).max()) > 0.0
+def test_only_the_predator_gets_the_agility_scale():
+    cfg = replace(CFG, n_pred=1, n_prey=1, pred_acc_scale=2.0, pred_turn_scale=3.0)
+    a_f, a_r = pp.scale_action(jnp.ones((2, 2)), cfg)
+    assert jnp.allclose(a_f, jnp.array([2.0, 1.0]) * cfg.max_acc)
+    assert jnp.allclose(a_r, jnp.array([3.0, 1.0]) * cfg.max_ang_vel)
+
+
+def test_position_uses_the_post_update_velocity():
+    """Semi-implicit: x(t+1) = x(t) + v(t+1)dt, so one step from rest does move.
+
+    Appendix B writes v(t); forward Euler makes the contact spring gain energy.
+    See test_a_collision_never_gains_energy and research/notes/choices.md.
+    """
+    cfg = replace(CFG, init_speed_frac=0.0)
+    rest = pp.reset(KEYS[0], cfg)
+    moved = STEP(rest, jnp.ones((pp.n_agents(CFG), 2)), cfg)
+    assert not jnp.allclose(moved.pos, rest.pos)
+    assert jnp.allclose(moved.pos, rest.pos + moved.vel * cfg.dt, atol=1e-6)
+
+
+def test_a_collision_never_gains_energy():
+    """Restitution <= 1. Forward Euler gave 3.3 at the speeds prey actually move."""
+    cfg = replace(CFG, n_pred=0, n_prey=2)
+    no_thrust = jnp.tile(jnp.array([-1.0, 0.0]), (2, 1))
+    for v0 in (0.1, 0.25):
+        state = pp.State(
+            pos=jnp.array([[-0.06, 0.0], [0.06, 0.0]]),
+            vel=jnp.array([[v0, 0.0], [-v0, 0.0]]),
+            theta=jnp.zeros(2),
+            time=jnp.int32(0),
+        )
+        speeds = []
+        for _ in range(60):
+            state = pp.step(state, no_thrust, cfg)
+            speeds.append(float(jnp.linalg.norm(state.vel[0])))
+        assert max(speeds) <= v0 + 1e-6, f"restitution > 1 at v0={v0}"
 
 
 def test_drag_equilibrium_is_max_acc_over_drag():
@@ -124,17 +157,15 @@ def test_drag_equilibrium_is_max_acc_over_drag():
     That equilibrium equals table 1's max speed, which is why appendix B never
     mentions enforcing a limit. Alone, so no contact force pollutes it.
     """
-    solo = replace(
-        CFG, n_pred=1, n_prey=0, speed_pred=100.0, init_speed_frac=0.0
-    )
+    solo = replace(CFG, n_pred=1, n_prey=0, max_speed_pred=100.0, init_speed_frac=0.0)
     state, _ = _rollout(solo, jnp.array([[1.0, 0.0]]), 300)
     speed = float(jnp.linalg.norm(state.vel, axis=-1).max())
     assert abs(speed - solo.max_acc / solo.drag) < 1e-3
 
 
 def test_speed_clamp_binds_for_the_slow_species():
-    """Without the clamp, speed_prey 0.3 would be a dead field and 4.5 would be a no-op."""
-    ratio = replace(CFG, speed_prey=0.3)
+    """Without the clamp, max_speed_prey 0.3 is a dead field and 4.5 is a no-op."""
+    ratio = replace(CFG, max_speed_prey=0.3)
     state, trace = _rollout(ratio, jnp.ones((pp.n_agents(ratio), 2)), 200)
     prey = jnp.stack([jnp.linalg.norm(s.vel[ratio.n_pred :], axis=-1) for s in trace])
     pred = jnp.stack([jnp.linalg.norm(s.vel[: ratio.n_pred], axis=-1) for s in trace])
