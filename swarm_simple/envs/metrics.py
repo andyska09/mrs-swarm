@@ -2,9 +2,7 @@
 
 The paper's claim is that swarming emerges while these go unoptimised.
 
-Both are defined over the nearest CONSPECIFIC, so pass one species' slice:
-`state.pos[cfg.n_pred:]` for prey. With fewer than two agents there is no nearest
-neighbour and both return nan.
+Both are defined over the nearest CONSPECIFIC.
 """
 
 import jax.numpy as jnp

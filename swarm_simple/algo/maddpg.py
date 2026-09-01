@@ -6,9 +6,8 @@ The three deviations from standard MADDPG:
 
 - one replay buffer per species. Both species learn concurrently.
 
-One environment, one gradient step per species per environment step
-
-Everything lives in a lax.scan carry, so a run is one XLA program.
+- `n_envs` environments stepped together
+- Everything lives in a lax.scan carry, so a run is one XLA program.
 """
 
 from typing import NamedTuple
@@ -53,6 +52,14 @@ def make_train(exp):
     actor_tx = OPTIMIZER[tr.optimizer](tr.lr_actor)
     critic_tx = OPTIMIZER[tr.optimizer](tr.lr_critic)
 
+    n_envs = tr.n_envs
+    v_reset = jax.vmap(pp.reset, in_axes=(0, None))
+    v_step = jax.vmap(pp.step, in_axes=(0, 0, None))
+    v_reward = jax.vmap(pp.reward, in_axes=(0, 0, None))
+    v_observe = jax.vmap(pp.observe, in_axes=(0, None))
+    v_scale = jax.vmap(pp.scale_action, in_axes=(0, None))
+    v_scripted = jax.vmap(scripted.predator, in_axes=(0, None))
+
     def init(key):
         k_a, k_c = jax.random.split(key)
         obs, action = jnp.zeros((1, d_o)), jnp.zeros((1, d_a))
@@ -70,11 +77,11 @@ def make_train(exp):
     def act(sp, obs, key, eps, noise):
         """-> (action, logits) mu(o) + N, or a uniform action with probability eps"""
         k_noise, k_pick, k_uniform = jax.random.split(key, 3)
-        n = obs.shape[0]
+        shape = obs.shape[:-1] + (d_a,)
         mu, z = actor.apply(sp.actor, obs)
-        a = mu + noise * jax.random.normal(k_noise, (n, d_a))
-        uniform = jax.random.uniform(k_uniform, (n, d_a), minval=-1.0, maxval=1.0)
-        explore = jax.random.bernoulli(k_pick, eps, (n, 1))
+        a = mu + noise * jax.random.normal(k_noise, shape)
+        uniform = jax.random.uniform(k_uniform, shape, minval=-1.0, maxval=1.0)
+        explore = jax.random.bernoulli(k_pick, eps, shape[:-1] + (1,))
         return jnp.clip(jnp.where(explore, uniform, a), -1.0, 1.0), z
 
     def learn(sp, key):
@@ -122,28 +129,42 @@ def make_train(exp):
     def env_step(carry, _):
         key, k_pred, k_prey, k_lp, k_ly = jax.random.split(carry.key, 5)
         if tr.scripted_predator:
-            a_pred, z_pred = scripted.predator(carry.state, env_cfg), jnp.zeros(
-                (n0, d_a)
+            a_pred, z_pred = v_scripted(carry.state, env_cfg), jnp.zeros(
+                (n_envs, n0, d_a)
             )
         else:
             a_pred, z_pred = act(
-                carry.pred, carry.obs[:n0], k_pred, carry.eps, carry.noise
+                carry.pred, carry.obs[:, :n0], k_pred, carry.eps, carry.noise
             )
-        a_prey, z_prey = act(carry.prey, carry.obs[n0:], k_prey, carry.eps, carry.noise)
-        action = jnp.concatenate([a_pred, a_prey])
+        a_prey, z_prey = act(
+            carry.prey, carry.obs[:, n0:], k_prey, carry.eps, carry.noise
+        )
+        action = jnp.concatenate([a_pred, a_prey], axis=1)
 
-        state = pp.step(carry.state, action, env_cfg)
-        reward, info = pp.reward(state, action, env_cfg)
-        next_obs = pp.observe(state, env_cfg)
+        state = v_step(carry.state, action, env_cfg)
+        reward, info = v_reward(state, action, env_cfg)
+        next_obs = v_observe(state, env_cfg)
+
+        def rows(x):
+            """(n_envs, n_i, d) -> (n_envs * n_i, d); the buffer has no env axis."""
+            return x.reshape(-1, *x.shape[2:])
 
         pred = carry.pred._replace(
             buf=buffer.insert(
-                carry.pred.buf, carry.obs[:n0], a_pred, reward[:n0], next_obs[:n0]
+                carry.pred.buf,
+                rows(carry.obs[:, :n0]),
+                rows(a_pred),
+                rows(reward[:, :n0]),
+                rows(next_obs[:, :n0]),
             )
         )
         prey = carry.prey._replace(
             buf=buffer.insert(
-                carry.prey.buf, carry.obs[n0:], a_prey, reward[n0:], next_obs[n0:]
+                carry.prey.buf,
+                rows(carry.obs[:, n0:]),
+                rows(a_prey),
+                rows(reward[:, n0:]),
+                rows(next_obs[:, n0:]),
             )
         )
 
@@ -157,25 +178,26 @@ def make_train(exp):
             warm, lambda: learn(prey, k_ly), lambda: (prey, NO_UPDATE)
         )
 
-        dos, doa = species_metrics(state.pos[n0:], state.theta[n0:])
-        pred_dos, pred_doa = species_metrics(state.pos[:n0], state.theta[:n0])
+        v_metrics = jax.vmap(species_metrics)
+        dos, doa = v_metrics(state.pos[:, n0:], state.theta[:, n0:])
+        pred_dos, pred_doa = v_metrics(state.pos[:, :n0], state.theta[:, :n0])
         nan = jnp.float32(jnp.nan)
         # Physical units: a_F in [0, max_acc], |a_R| in [0, max_ang_vel].
-        a_f, a_r = pp.scale_action(action, env_cfg)
+        a_f, a_r = v_scale(action, env_cfg)
         out = {
-            "dos": dos,
-            "doa": doa,
-            "pred_dos": pred_dos,
-            "pred_doa": pred_doa,
-            "captures": info["captures"],
-            "pred_reward": reward[:n0].mean() if n0 else nan,
-            "prey_reward": reward[n0:].mean(),
-            "prey_survival": info["survival"][n0:].mean(),
-            "prey_movement": info["movement"][n0:].mean(),
-            "pred_af": a_f[:n0].mean() if n0 else nan,
-            "pred_ar": jnp.abs(a_r[:n0]).mean() if n0 else nan,
-            "prey_af": a_f[n0:].mean(),
-            "prey_ar": jnp.abs(a_r[n0:]).mean(),
+            "dos": dos.mean(),
+            "doa": doa.mean(),
+            "pred_dos": pred_dos.mean(),
+            "pred_doa": pred_doa.mean(),
+            "captures": info["captures"].mean(),
+            "pred_reward": reward[:, :n0].mean() if n0 else nan,
+            "prey_reward": reward[:, n0:].mean(),
+            "prey_survival": info["survival"][:, n0:].mean(),
+            "prey_movement": info["movement"][:, n0:].mean(),
+            "pred_af": a_f[:, :n0].mean() if n0 else nan,
+            "pred_ar": jnp.abs(a_r[:, :n0]).mean() if n0 else nan,
+            "prey_af": a_f[:, n0:].mean(),
+            "prey_ar": jnp.abs(a_r[:, n0:]).mean(),
             "pred_z": jnp.abs(z_pred).mean() if n0 else nan,
             "prey_z": jnp.abs(z_prey).mean(),
             "pred_q": p_aux["q"],
@@ -198,8 +220,8 @@ def make_train(exp):
 
     def episode(carry, _):
         key, k_reset = jax.random.split(carry.key)
-        state = pp.reset(k_reset, env_cfg)
-        carry = carry._replace(key=key, state=state, obs=pp.observe(state, env_cfg))
+        state = v_reset(jax.random.split(k_reset, n_envs), env_cfg)
+        carry = carry._replace(key=key, state=state, obs=v_observe(state, env_cfg))
         carry, out = jax.lax.scan(env_step, carry, None, length=env_cfg.episode_len)
 
         def decay(x):
@@ -213,12 +235,12 @@ def make_train(exp):
 
     def train(key):
         k_pred, k_prey, k_reset, key = jax.random.split(key, 4)
-        state = pp.reset(k_reset, env_cfg)
+        state = v_reset(jax.random.split(k_reset, n_envs), env_cfg)
         carry = Carry(
             pred=init(k_pred),
             prey=init(k_prey),
             state=state,
-            obs=pp.observe(state, env_cfg),
+            obs=v_observe(state, env_cfg),
             key=key,
             eps=jnp.float32(tr.eps),
             noise=jnp.float32(tr.noise),

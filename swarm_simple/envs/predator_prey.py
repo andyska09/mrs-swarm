@@ -5,6 +5,7 @@ Agents are an array predators first: `pos[:n_pred]`, then `pos[n_pred:]`.
 `cfg` is an EnvConfig and is passed to jit as a static argument.
 """
 
+import math
 from typing import NamedTuple
 
 import jax
@@ -38,7 +39,15 @@ def masses(cfg):
 
 
 def max_speeds(cfg):
-    return _per_agent(cfg, cfg.speed_pred, cfg.speed_prey)
+    return _per_agent(cfg, cfg.max_speed_pred, cfg.max_speed_prey)
+
+
+def max_accs(cfg):
+    return _per_agent(cfg, cfg.max_acc * cfg.pred_acc_scale, cfg.max_acc)
+
+
+def max_ang_vels(cfg):
+    return _per_agent(cfg, cfg.max_ang_vel * cfg.pred_turn_scale, cfg.max_ang_vel)
 
 
 def max_distance(cfg):
@@ -58,7 +67,25 @@ def delta(a, b, cfg):
     return d
 
 
+def _lattice_pos(key, cfg):
+    """Prey on a random square grid, predators uniform. Spawn for the formation test."""
+    n1, s, half = cfg.n_prey, cfg.spawn_spacing, cfg.edge / 2
+    side = math.ceil(math.sqrt(n1))
+    k_c, k_j, k_p = jax.random.split(key, 3)
+    ij = jnp.stack(jnp.meshgrid(jnp.arange(side), jnp.arange(side)), -1).reshape(-1, 2)
+    grid = (ij[:n1] - (side - 1) / 2.0) * s
+    prey = (
+        jax.random.uniform(k_c, (2,), minval=-half, maxval=half)
+        + grid
+        + jax.random.uniform(k_j, (n1, 2), minval=-0.1 * s, maxval=0.1 * s)
+    )
+    pred = jax.random.uniform(k_p, (cfg.n_pred, 2), minval=-half, maxval=half)
+    return _wrap_pos(jnp.concatenate([pred, prey]), cfg)
+
+
 def _spawn_pos(key, cfg):
+    if cfg.spawn == "lattice":
+        return _lattice_pos(key, cfg)
     n, half, r = n_agents(cfg), cfg.edge / 2, radii(cfg)
     unplaced = jnp.arange(n)
 
@@ -124,7 +151,7 @@ def _wrap_pos(pos, cfg):
 def scale_action(action, cfg):
     """Actor output in [-1, 1]^2 -> physical (a_F, a_R). Spec 1.3."""
     a = jnp.clip(action, -1.0, 1.0)
-    return (a[:, 0] + 1.0) * 0.5 * cfg.max_acc, a[:, 1] * cfg.max_ang_vel
+    return (a[:, 0] + 1.0) * 0.5 * max_accs(cfg), a[:, 1] * max_ang_vels(cfg)
 
 
 def contact_force(pos, cfg):
@@ -164,8 +191,8 @@ def step(state, action, cfg):
     speed = jnp.linalg.norm(vel, axis=-1, keepdims=True)
     vel = vel * jnp.minimum(1.0, max_speeds(cfg)[:, None] / (speed + EPS))
 
-    # The paper integrates position with the PRE-update velocity. Not a typo.
-    pos = _wrap_pos(state.pos + state.vel * cfg.dt, cfg)
+    # The new velocity - see choices.md, differs from the paper eq.
+    pos = _wrap_pos(state.pos + vel * cfg.dt, cfg)
     return State(pos=pos, vel=vel, theta=theta, time=state.time + 1)
 
 

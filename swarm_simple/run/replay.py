@@ -57,8 +57,8 @@ def actor_for(sp, species, env_cfg, key):
     return lambda k, obs: net.apply(params, obs)[0]
 
 
-def simulate(cfg):
-    """-> (states, reward, info). Not `pp.rollout`: scripted reads the state, not the obs."""
+def episode_fn(cfg):
+    """-> f(key) -> (states, reward, info)."""
     env_cfg, n0 = cfg.env, cfg.env.n_pred
     pred = actor_for(cfg.pred, "pred", env_cfg, jax.random.PRNGKey(cfg.pred.seed))
     prey = actor_for(cfg.prey, "prey", env_cfg, jax.random.PRNGKey(cfg.prey.seed))
@@ -83,7 +83,13 @@ def simulate(cfg):
         )
         return out
 
-    return jax.jit(go)(jax.random.PRNGKey(cfg.env_seed))
+    return go
+
+
+def simulate(cfg):
+    """-> (states, reward, info) for one episode from `env_seed`. Not `pp.rollout`,
+    which passes observations only — the scripted predator reads the true state."""
+    return jax.jit(episode_fn(cfg))(jax.random.PRNGKey(cfg.env_seed))
 
 
 def main():

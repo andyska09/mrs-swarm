@@ -18,5 +18,5 @@ def predator(state, cfg):
 
     err = wrap_angle(jnp.arctan2(to_prey[:, 1], to_prey[:, 0]) - state.theta[:n0])
     # a_R is an angular velocity: the turn wanted this step, capped by the limit.
-    a_r = jnp.clip(err / (cfg.dt * cfg.max_ang_vel), -1.0, 1.0)
+    a_r = jnp.clip(err / (cfg.dt * cfg.max_ang_vel * cfg.pred_turn_scale), -1.0, 1.0)
     return jnp.stack([jnp.ones(n0), a_r], axis=-1)

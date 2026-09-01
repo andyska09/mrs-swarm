@@ -26,8 +26,13 @@ class EnvConfig:
     stiffness: float
     max_acc: float
     max_ang_vel: float
-    speed_pred: float
-    speed_prey: float
+
+    # My addition,  1.0 is the paper.
+    pred_acc_scale: float
+    pred_turn_scale: float
+    max_speed_pred: float
+    max_speed_prey: float
+
     perception_frac: (
         float  # R / D; D is the max possible separation, from edge and boundary
     )
@@ -43,6 +48,10 @@ class EnvConfig:
     radius_prey: float
     heading_encoding: str  # unit | angle; sets d_o to 54 or 41
     init_speed_frac: float  # spawn speed, as a fraction of that agent's max
+
+    # uniform is the paper's lattice puts the prey on a jittered square grid of `spawn_spacing`, predators still uniform
+    spawn: str  # uniform | lattice
+    spawn_spacing: float
 
 
 @dataclass(frozen=True)
@@ -70,6 +79,9 @@ class MADDPGConfig:
     learning_starts: (
         int  # env steps, not transitions: the species insert at different rates
     )
+
+    # Independent copies of the env stepped together
+    n_envs: int
 
     scripted_predator: bool  # §4.4: predators follow a fixed rule, only prey learn
 
