@@ -1,19 +1,9 @@
 {
-  "name": "flock50",
-  "env_seed": 0,
-  "pred": {
-    "mode": "learned",
-    "run": "runs/20260830-145636_585e3787",
-    "seed": 0
-  },
-  "prey": {
-    "mode": "learned",
-    "run": "runs/20260830-145636_585e3787",
-    "seed": 0
-  },
+  "name": "flocking_freeprey",
+  "algo": "maddpg",
   "env": {
     "n_pred": 3,
-    "n_prey": 50,
+    "n_prey": 10,
     "episode_len": 100,
     "boundary": "torus",
     "n_neighbors": 6,
@@ -40,6 +30,33 @@
     "pred_turn_scale": 1.0,
     "max_speed_pred": 0.5,
     "max_speed_prey": 0.5,
-    "prey_cost_scale": 1.0
+    "prey_cost_scale": 0.0
+  },
+  "model": {
+    "hidden": [
+      64,
+      64,
+      64
+    ],
+    "activation": "relu",
+    "actor_output": "tanh"
+  },
+  "train": {
+    "episodes": 2000,
+    "lr_actor": 0.0001,
+    "lr_critic": 0.001,
+    "gamma": 0.95,
+    "tau": 0.01,
+    "buffer_size": 500000,
+    "batch_size": 256,
+    "eps": 0.1,
+    "noise": 0.1,
+    "expl_min": 0.05,
+    "expl_decay": 5e-05,
+    "optimizer": "adam",
+    "learning_starts": 100,
+    "n_envs": 1,
+    "scripted_predator": false,
+    "actor_reg": 0.001
   }
 }

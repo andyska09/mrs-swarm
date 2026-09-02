@@ -1,20 +1,20 @@
 {
-  "name": "flock50",
+  "name": "nopred500_n50",
   "env_seed": 0,
   "pred": {
     "mode": "learned",
-    "run": "runs/20260830-145636_585e3787",
-    "seed": 0
+    "run": "runs/20260901-161634_ad74c0b7",
+    "seed": 2
   },
   "prey": {
     "mode": "learned",
-    "run": "runs/20260830-145636_585e3787",
-    "seed": 0
+    "run": "runs/20260901-161634_ad74c0b7",
+    "seed": 2
   },
   "env": {
-    "n_pred": 3,
+    "n_pred": 0,
     "n_prey": 50,
-    "episode_len": 100,
+    "episode_len": 1000,
     "boundary": "torus",
     "n_neighbors": 6,
     "edge": 2.0,

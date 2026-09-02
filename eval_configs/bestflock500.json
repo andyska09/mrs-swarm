@@ -39,6 +39,7 @@
     "pred_acc_scale": 1.0,
     "pred_turn_scale": 1.0,
     "max_speed_pred": 0.5,
-    "max_speed_prey": 0.5
+    "max_speed_prey": 0.5,
+    "prey_cost_scale": 1.0
   }
 }
