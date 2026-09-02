@@ -41,6 +41,9 @@ class EnvConfig:
     catch_reward: float
     cost_af: float
     cost_ar: float
+    # Scales the prey's movement cost only; 1.0 is the paper, which charges both
+    # species the same. 0.0 frees the prey while leaving the predator braked.
+    prey_cost_scale: float
     boundary_penalty: float
 
     # Never stated by the paper:

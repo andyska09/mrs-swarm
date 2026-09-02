@@ -80,12 +80,14 @@ Four references, in this order:
 [li2023_spec.md](research/notes/li2023_spec.md) is the paper side only;
 [choices.md](research/notes/choices.md) is every decision the paper does not make
 for us, and what we hardcode where it does;
-[exp_sweeps.md](research/notes/experiments/exp_sweeps.md) is every run and eval
-we have done and what each one measured;
-[exp_learner_sweep.md](research/notes/experiments/exp_learner_sweep.md) is the
-current state of the replication — read it before touching flocking again.
+[exp_sweeps.md](research/notes/experiments/exp_sweeps.md) is every run and eval we
+have done and the current state of the replication — read it before touching
+flocking again, with [tables.md](research/notes/experiments/tables.md) beside it
+for the numbers alone;
 [inducing_flocking.md](research/notes/inducing_flocking.md) is the ranked list of
 what to try next.
+[exp_learner_sweep.md](research/notes/experiments/exp_learner_sweep.md) is the
+08-31 handoff, superseded — three of its claims are corrected in its own header.
 
 Deviations from the paper, all deliberate: agent radii (0.06 / 0.04) and initial
 velocity are unstated in the paper; observations use ally-first ordering and
@@ -135,7 +137,10 @@ How a run is put together — the parts that are not obvious from any single fil
 - **`n_envs` independent envs stepped together, still one gradient step per
   species per env step.** Widening `n_envs` widens what goes into the buffer per
   step (`rows()` flattens the env axis away — the buffer has no env axis), not
-  how often anyone learns. No update-every-k.
+  how often anyone learns. No update-every-k. So `n_envs` buys data, not learning:
+  `buffer_size` counts rows, so 64 envs shrink the buffer's span from ~500 episodes
+  to ~8, and each transition is sampled ~0.4 times instead of ~26 before being
+  overwritten. It cannot test whether the learner is data-starved.
 - **The critic is decentralised: `Q(o_i, a_i)`.** It is called MADDPG but there is
   no centralised critic. Deliberate, per the spec; the single most surprising fact
   in the tree.

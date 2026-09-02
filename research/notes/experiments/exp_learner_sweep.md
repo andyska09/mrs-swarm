@@ -1,5 +1,20 @@
 # exp_learner_sweep — 2026-08-31
 
+**Superseded by `exp_sweeps.md` (2026-09-01). Kept for its narrative. Three claims
+below are now known to be wrong:**
+
+1. *"why formation is 5–10× slower than the paper's"* — **wrong.** Measured on
+   single-episode curves, DoA crosses 0.9 at step 43–79 and DoS reaches 0.13 by
+   step 50–100, comparable to the paper's fig 4. The slow ramp was an artifact of
+   averaging episodes that form at different moments. The real defect is that the
+   flock **breaks and re-forms**, not that it forms slowly.
+2. *"`n_envs` 64: no effect on flocking. Removes 'the learner is data-starved' as
+   an explanation."* — **not supported.** `n_envs` multiplies data collected but
+   leaves the number of gradient steps unchanged, so the learner does exactly as
+   much learning either way. The experiment cannot test data-starvation.
+3. The handling-time and Tier-1 results described here were later re-measured;
+   see `exp_sweeps.md`. `handling_time` was removed from the code on 09-01.
+
 Handoff note. Read this before touching the flocking replication again.
 
 ## The headline
@@ -165,8 +180,8 @@ rows is already ~2.2 GB across 2 species × 5 seeds.
 
 ## Stale notes — do not trust
 
-- `replication_gap_suspects.md` — predates the integrator fix and the whole of
-  the above.
-- `inducing_flocking.md` — its Tier-1 table ("every condition fails, grouping is
-  punished") is old-physics *and* measured through the wrong window. The
-  conclusion it draws is contradicted by this note.
+- `replication_gap_suspects.md` — deleted 09-01; it predated the integrator fix.
+  Recover from git history if a detail is ever needed.
+- `inducing_flocking.md` — rewritten 09-01. Its old Tier-1 table was old-physics
+  and read through the wrong window; the surviving screen results are in
+  `exp_sweeps.md`.

@@ -113,6 +113,17 @@ def test_action_is_clipped():
     assert float(a_f[0]) == cfg.max_acc and float(a_r[0]) == -cfg.max_ang_vel
 
 
+def test_prey_cost_scale_charges_only_the_prey():
+    cfg = replace(CFG, n_pred=1, n_prey=1, prey_cost_scale=0.0)
+    _, info = pp.reward(pp.reset(KEYS[0], cfg), jnp.ones((2, 2)), cfg)
+    assert float(info["movement"][0]) < 0.0, "predator still pays"
+    assert float(info["movement"][1]) == 0.0, "prey is free"
+
+    paper = replace(cfg, prey_cost_scale=1.0)
+    _, both = pp.reward(pp.reset(KEYS[0], paper), jnp.ones((2, 2)), paper)
+    assert jnp.allclose(both["movement"][0], both["movement"][1]), "1.0 is symmetric"
+
+
 def test_only_the_predator_gets_the_agility_scale():
     cfg = replace(CFG, n_pred=1, n_prey=1, pred_acc_scale=2.0, pred_turn_scale=3.0)
     a_f, a_r = pp.scale_action(jnp.ones((2, 2)), cfg)

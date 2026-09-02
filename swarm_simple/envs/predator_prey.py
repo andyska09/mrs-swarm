@@ -272,7 +272,8 @@ def reward(state, action, cfg):
     survival = cfg.catch_reward * jnp.concatenate([hunting, -hunted])
 
     a_f, a_r = scale_action(action, cfg)
-    movement = -(cfg.cost_af * jnp.abs(a_f) + cfg.cost_ar * jnp.abs(a_r))
+    scale = _per_agent(cfg, 1.0, cfg.prey_cost_scale)
+    movement = -scale * (cfg.cost_af * jnp.abs(a_f) + cfg.cost_ar * jnp.abs(a_r))
     wall = -cfg.boundary_penalty * wall_force(state.pos, cfg)[1].astype(jnp.float32)
 
     info = {

@@ -42,6 +42,8 @@ def evaluate(cfg, episodes):
         "captures_per_step_per_prey": _stat(info["captures"] / env.n_prey),
         "prey_return": _stat(reward[:, :, n0:].sum(axis=1)),
         "pred_return": _stat(reward[:, :, :n0].sum(axis=1)) if n0 else None,
+        # High DoA at zero speed is a parked crowd, not a flock.
+        "prey_speed": _stat(jnp.linalg.norm(states.vel[:, :, n0:], axis=-1)),
         "dos": _stat(dos),
         "doa": _stat(doa),
         "dos_final_quarter": _stat(dos[:, tail]),
