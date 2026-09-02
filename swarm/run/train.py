@@ -1,6 +1,6 @@
 """Create a run from a config JSON.
 
-python -m swarm_simple.run.train configs/flocking.json --seeds 0 1 2
+python -m swarm.run.train configs/flocking.json --seeds 0 1 2
 """
 
 import argparse
@@ -15,7 +15,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from swarm_simple.config import as_dict, config_hash, load
+from swarm.config import as_dict, config_hash, load
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[2]
 def make_train(cfg):
     """The only place an algorithm name turns into code."""
     if cfg.algo == "maddpg":
-        from swarm_simple.algo.maddpg import make_train as build
+        from swarm.algo.maddpg import make_train as build
 
         return build(cfg)
     raise SystemExit(f"no builder for algo {cfg.algo!r}")

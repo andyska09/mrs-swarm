@@ -1,12 +1,12 @@
 """Replay buffer tests. Spec 3.3.
 
-    python -m swarm_simple.tests.test_buffer
+    python -m swarm.tests.test_buffer
 """
 
 import jax
 import jax.numpy as jnp
 
-from swarm_simple.algo import buffer
+from swarm.algo import buffer
 
 D_O, D_A = 4, 2
 KEY = jax.random.PRNGKey(0)

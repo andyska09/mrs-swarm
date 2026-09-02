@@ -1,7 +1,7 @@
 """
 A replayed episode -> GIF.
 
-    python -m swarm_simple.run.render renders/flock50
+    python -m swarm.run.render renders/flock50
 
 Reads run.replay output.
 """
@@ -18,9 +18,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.collections import EllipseCollection
 
-from swarm_simple.config import load_eval
-from swarm_simple.envs import metrics
-from swarm_simple.envs import predator_prey as pp
+from swarm.config import load_eval
+from swarm.envs import metrics
+from swarm.envs import predator_prey as pp
 
 ARROW_FRAC = 0.06  # arrow length at max speed, as a fraction of the arena edge
 

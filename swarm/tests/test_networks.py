@@ -1,6 +1,6 @@
 """Actor and critic tests. Spec 3.2.
 
-    python -m swarm_simple.tests.test_networks
+    python -m swarm.tests.test_networks
 """
 
 from pathlib import Path
@@ -8,9 +8,9 @@ from pathlib import Path
 import jax
 import jax.numpy as jnp
 
-from swarm_simple.algo import networks
-from swarm_simple.config import load
-from swarm_simple.envs import predator_prey as pp
+from swarm.algo import networks
+from swarm.config import load
+from swarm.envs import predator_prey as pp
 
 ROOT = Path(__file__).resolve().parents[2]
 CFG = load(ROOT / "configs" / "flocking.json")

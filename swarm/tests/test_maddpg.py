@@ -1,6 +1,6 @@
 """MADDPG tests. Spec 3 and 4. Short runs — this is a gate, not an experiment.
 
-    python -m swarm_simple.tests.test_maddpg
+    python -m swarm.tests.test_maddpg
 """
 
 from dataclasses import replace
@@ -10,8 +10,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from swarm_simple.algo import maddpg
-from swarm_simple.config import load
+from swarm.algo import maddpg
+from swarm.config import load
 
 ROOT = Path(__file__).resolve().parents[2]
 FULL = load(ROOT / "configs" / "flocking.json")

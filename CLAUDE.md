@@ -36,7 +36,7 @@ Edit only the named file. Do not run tests. Stop after the edit, summarize it, a
 ## What this repository is
 
 A research workspace for multi-robot / swarm RL. Our own code lives
-in `swarm_simple/`; `research/` holds notes, papers, and two vendored reference
+in `swarm/`; `research/` holds notes, papers, and two vendored reference
 codebases we learn from but do not edit.
 
 Replicating Li 2023 is how the platform gets validated; the platform is the end.
@@ -59,7 +59,7 @@ written in Czech — gitignored, so a fresh clone does not have it):
 
 | env | for | how |
 |---|---|---|
-| `mrs-swarm` | `swarm_simple/`, `research/code_sources/PPO_example` | `conda run -n mrs-swarm --no-capture-output python ...` |
+| `mrs-swarm` | `swarm/`, `research/code_sources/PPO_example` | `conda run -n mrs-swarm --no-capture-output python ...` |
 | — | `research/code_sources/quad-swarm-rl` | separate PyTorch stack, not created yet |
 
 **NEVER run bare `python` or `python3`.** The system interpreter has no jax. Every
@@ -69,9 +69,9 @@ one-off checks and test scripts.
 `mrs-swarm` is conda + python 3.11, CPU: jax/jaxlib 0.10.1, flax 0.12.7, optax
 0.2.8, matplotlib, imageio ([requirements.txt](requirements.txt), pins copied
 from PPO_example). Use `conda run`, not `source activate`. Run everything from
-the repo root as `-m swarm_simple.…`.
+the repo root as `-m swarm.…`.
 
-## swarm_simple/ — the only code
+## swarm/ — the only code
 
 Ground-up reimplementation, CleanRL style. It replaced an earlier tree, `swarm/`,
 deleted in `99daf31` — recover it from git history if a detail is ever needed.
@@ -96,25 +96,25 @@ knobs the paper does not have (1.0 is the paper); `spawn: lattice` exists only
 for the formation test.
 
 ```bash
-conda run -n mrs-swarm --no-capture-output python -m swarm_simple.run.train configs/flocking.json --seeds 0 1 2
-conda run -n mrs-swarm --no-capture-output python -m swarm_simple.run.replay eval_configs/flock50.json
-conda run -n mrs-swarm --no-capture-output python -m swarm_simple.run.render renders/flock50
-conda run -n mrs-swarm --no-capture-output python -m swarm_simple.run.eval eval_configs/flock50.json --episodes 200
+conda run -n mrs-swarm --no-capture-output python -m swarm.run.train configs/flocking.json --seeds 0 1 2
+conda run -n mrs-swarm --no-capture-output python -m swarm.run.replay eval_configs/flock50.json
+conda run -n mrs-swarm --no-capture-output python -m swarm.run.render renders/flock50
+conda run -n mrs-swarm --no-capture-output python -m swarm.run.eval eval_configs/flock50.json --episodes 200
 ```
 
 Tests: **no pytest, and no aggregate gate.** Each module is its own `__main__`
 runner and is invoked on its own; nothing runs them all.
 
 ```bash
-conda run -n mrs-swarm --no-capture-output python -m swarm_simple.tests.test_env      # ~450 lines, the big one
-conda run -n mrs-swarm --no-capture-output python -m swarm_simple.tests.test_metrics
-conda run -n mrs-swarm --no-capture-output python -m swarm_simple.tests.test_networks
-conda run -n mrs-swarm --no-capture-output python -m swarm_simple.tests.test_buffer
-conda run -n mrs-swarm --no-capture-output python -m swarm_simple.tests.test_maddpg   # runs tiny trainings, slowest
+conda run -n mrs-swarm --no-capture-output python -m swarm.tests.test_env      # ~450 lines, the big one
+conda run -n mrs-swarm --no-capture-output python -m swarm.tests.test_metrics
+conda run -n mrs-swarm --no-capture-output python -m swarm.tests.test_networks
+conda run -n mrs-swarm --no-capture-output python -m swarm.tests.test_buffer
+conda run -n mrs-swarm --no-capture-output python -m swarm.tests.test_maddpg   # runs tiny trainings, slowest
 ```
 
 ```
-swarm_simple/
+swarm/
 ├── config.py                the ONLY schema: frozen dataclasses + load/hash
 ├── envs/predator_prey.py    state, step, observe, reward, rollout — module of functions
 ├── envs/metrics.py          DoS / DoA, eq 2 and 3
@@ -133,7 +133,7 @@ How a run is put together — the parts that are not obvious from any single fil
 - **One XLA program, two nested scans.** `train(key)` is `lax.scan` over episodes,
   each of which is `lax.scan` over `episode_len` env steps. Networks, optimizer
   state, both replay buffers, env state and RNG all live in one `Carry`. Seeds are
-  `vmap`ped over `make_train(cfg)` in [train.py:82](swarm_simple/run/train.py#L82).
+  `vmap`ped over `make_train(cfg)` in [train.py:82](swarm/run/train.py#L82).
 - **`n_envs` independent envs stepped together, still one gradient step per
   species per env step.** Widening `n_envs` widens what goes into the buffer per
   step (`rows()` flattens the env axis away — the buffer has no env axis), not

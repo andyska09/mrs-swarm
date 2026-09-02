@@ -16,9 +16,9 @@ import jax
 import jax.numpy as jnp
 import optax
 
-from swarm_simple.algo import buffer, networks
-from swarm_simple.envs import metrics, scripted
-from swarm_simple.envs import predator_prey as pp
+from swarm.algo import buffer, networks
+from swarm.envs import metrics, scripted
+from swarm.envs import predator_prey as pp
 
 OPTIMIZER = {"adam": optax.adam, "sgd": optax.sgd}
 NO_UPDATE = {k: jnp.float32(0.0) for k in ("critic_loss", "actor_loss", "q")}

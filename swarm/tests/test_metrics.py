@@ -1,6 +1,6 @@
 """DoS and DoA tests. Spec section 5.
 
-    python -m swarm_simple.tests.test_metrics
+    python -m swarm.tests.test_metrics
 """
 
 from dataclasses import replace
@@ -9,9 +9,9 @@ from pathlib import Path
 import jax
 import jax.numpy as jnp
 
-from swarm_simple.config import load
-from swarm_simple.envs import metrics
-from swarm_simple.envs import predator_prey as pp
+from swarm.config import load
+from swarm.envs import metrics
+from swarm.envs import predator_prey as pp
 
 ROOT = Path(__file__).resolve().parents[2]
 CFG = load(ROOT / "configs" / "flocking.json").env

@@ -5,7 +5,7 @@ Replaces the learned predator so that only the prey evolve.
 
 import jax.numpy as jnp
 
-from swarm_simple.envs.predator_prey import delta, wrap_angle
+from swarm.envs.predator_prey import delta, wrap_angle
 
 
 def predator(state, cfg):

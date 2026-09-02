@@ -1,6 +1,6 @@
 """Statistics over many episodes of one eval config.
 
-    python -m swarm_simple.run.eval eval_configs/flock50.json --episodes 200
+    python -m swarm.run.eval eval_configs/flock50.json --episodes 200
 
 -> evals/<name>.json. Same episode as run.replay, vmapped over env seeds.
 """
@@ -13,10 +13,10 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from swarm_simple.config import eval_as_dict, load_eval
-from swarm_simple.envs import metrics
-from swarm_simple.envs import predator_prey as pp
-from swarm_simple.run.replay import episode_fn
+from swarm.config import eval_as_dict, load_eval
+from swarm.envs import metrics
+from swarm.envs import predator_prey as pp
+from swarm.run.replay import episode_fn
 
 ROOT = Path(__file__).resolve().parents[2]
 

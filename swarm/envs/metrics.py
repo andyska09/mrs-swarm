@@ -7,7 +7,7 @@ Both are defined over the nearest CONSPECIFIC.
 
 import jax.numpy as jnp
 
-from swarm_simple.envs.predator_prey import delta, max_distance
+from swarm.envs.predator_prey import delta, max_distance
 
 
 def nearest(pos, cfg):

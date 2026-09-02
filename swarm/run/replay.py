@@ -1,6 +1,6 @@
 """Run one episode from an eval config.
 
-    python -m swarm_simple.run.replay eval_configs/flock50.json
+    python -m swarm.run.replay eval_configs/flock50.json
 
 -> renders/<name>/{traj.npz, config.json}. Draw it with run.render.
 
@@ -18,10 +18,10 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from swarm_simple.algo import networks
-from swarm_simple.config import eval_as_dict, load, load_eval
-from swarm_simple.envs import predator_prey as pp
-from swarm_simple.envs import scripted
+from swarm.algo import networks
+from swarm.config import eval_as_dict, load, load_eval
+from swarm.envs import predator_prey as pp
+from swarm.envs import scripted
 
 ROOT = Path(__file__).resolve().parents[2]
 
